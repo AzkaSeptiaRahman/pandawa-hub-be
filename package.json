@@ -20,6 +20,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.4.0",
     "pg": "^8.23.0",
+    "unzipper": "^0.12.5",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

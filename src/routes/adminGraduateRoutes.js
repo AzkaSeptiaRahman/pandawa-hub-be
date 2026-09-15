@@ -1,210 +1,122 @@
 const express = require("express");
-
 const router = express.Router();
-
 const multer = require("multer");
 
 const authMiddleware =
 require("../middleware/authMiddleware");
 
 
-
 const {
-
     getGraduates,
-
     createGraduate,
-
     updateGraduate,
-
     deleteGraduate,
-
     importExcel,
-
     getGraduateOptions
-
-
 } = require("../controllers/adminGraduateController");
 
 
 
 
-
-console.log({
-
-    getGraduates: typeof getGraduates,
-
-    createGraduate: typeof createGraduate,
-
-    updateGraduate: typeof updateGraduate,
-
-    deleteGraduate: typeof deleteGraduate,
-
-    importExcel: typeof importExcel,
-
-    getGraduateOptions: typeof getGraduateOptions
-
-});
-
-
-
-
-
-
-
-
+// ==============================
+// MULTER EXCEL UPLOAD
+// ==============================
 
 const upload = multer({
-
     dest:"uploads/excel"
-
 });
 
 
 
 
+// ==============================
+// AUTH
+// ==============================
 
-
-
-
-
-// aktifkan kalau CMS sudah pakai login
 router.use(authMiddleware);
 
 
 
 
-
-
-
-
-
-// GET ALL GRADUATES
-
-// GET /api/admin/graduates
+// ==============================
+// GET GRADUATES
+// GET /api/admin/graduates?eventId=1
+// ==============================
 
 router.get(
-
     "/",
-
     getGraduates
-
 );
 
 
 
 
-
-
-
-
-// GET OPTIONS FOR PHOTO UPLOAD
-
+// ==============================
+// GET GRADUATE OPTIONS
 // GET /api/admin/graduates/options
+// ==============================
 
 router.get(
-
     "/options",
-
     getGraduateOptions
-
 );
 
 
 
 
-
-
-
-
-// CREATE
-
+// ==============================
+// CREATE GRADUATE
 // POST /api/admin/graduates
+// ==============================
 
 router.post(
-
     "/",
-
     createGraduate
-
 );
 
 
 
 
-
-
-
-
-// UPDATE
-
+// ==============================
+// UPDATE GRADUATE
 // PUT /api/admin/graduates/:id
+// ==============================
 
 router.put(
-
     "/:id",
-
     updateGraduate
-
 );
 
 
 
 
-
-
-
-
-// DELETE
-
+// ==============================
+// DELETE GRADUATE
 // DELETE /api/admin/graduates/:id
+// ==============================
 
 router.delete(
-
     "/:id",
-
     deleteGraduate
-
 );
 
 
 
 
-
-
-
-
+// ==============================
 // IMPORT EXCEL
-
 // POST /api/admin/graduates/import
+//
+// FORM DATA:
+// event_id
+// file
+// ==============================
 
 router.post(
-
     "/import",
-
     upload.single("file"),
-
     importExcel
-
 );
-
-
-
-module.exports = {
-
-    getGraduates,
-
-    createGraduate,
-
-    updateGraduate,
-
-    deleteGraduate,
-
-    importExcel,
-
-    getGraduateOptions
-
-};
 
 
 

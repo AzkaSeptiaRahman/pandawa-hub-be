@@ -1,36 +1,35 @@
 const express = require("express");
-
 const router = express.Router();
 
+const multer = require("multer");
 
-const authMiddleware = require("../middleware/authMiddleware");
-
-
-const adminEventController = require("../controllers/adminEventController");
-
+const authMiddleware =
+require("../middleware/authMiddleware");
 
 
 const {
+
     getEvents,
+    getEventOptions,
     createEvent,
+    updateEvent,
     deleteEvent
-} = adminEventController;
+
+} = require("../controllers/adminEventController");
 
 
 
 
-// DEBUG sementara
-console.log({
-    getEvents: typeof getEvents,
-    createEvent: typeof createEvent,
-    deleteEvent: typeof deleteEvent
+
+const upload = multer({
+
+    dest:"uploads/events"
+
 });
 
 
 
 
-
-// Semua endpoint event CMS wajib login
 
 router.use(authMiddleware);
 
@@ -38,10 +37,7 @@ router.use(authMiddleware);
 
 
 
-
-
 // GET ALL EVENTS
-// GET /api/admin/events
 
 router.get(
     "/",
@@ -52,14 +48,46 @@ router.get(
 
 
 
+// DROPDOWN EVENT
+
+router.get(
+    "/options",
+    getEventOptions
+);
+
+
+
+
 
 
 // CREATE EVENT
-// POST /api/admin/events
 
 router.post(
+
     "/",
+
+    upload.single("thumbnail"),
+
     createEvent
+
+);
+
+
+
+
+
+
+
+// UPDATE EVENT
+
+router.put(
+
+    "/:id",
+
+    upload.single("thumbnail"),
+
+    updateEvent
+
 );
 
 
@@ -69,13 +97,14 @@ router.post(
 
 
 // DELETE EVENT
-// DELETE /api/admin/events/:id
 
 router.delete(
-    "/:id",
-    deleteEvent
-);
 
+    "/:id",
+
+    deleteEvent
+
+);
 
 
 

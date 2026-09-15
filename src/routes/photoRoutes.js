@@ -3,8 +3,9 @@ const express = require("express");
 const router = express.Router();
 
 
-
 const {
+
+    getPhotoOptions,
 
     searchPhoto
 
@@ -12,20 +13,25 @@ const {
 
 
 
+// =====================================================
+// GET SEARCH OPTIONS
+// =====================================================
 
-
-// SEARCH STUDENT PHOTO
-
-router.post(
-
-    "/search",
-
-    searchPhoto
-
+router.get(
+    "/options",
+    getPhotoOptions
 );
 
 
 
+// =====================================================
+// SEARCH STUDENT PHOTO
+// =====================================================
+
+router.post(
+    "/search",
+    searchPhoto
+);
 
 
 

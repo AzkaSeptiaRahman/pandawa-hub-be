@@ -1,403 +1,627 @@
 const db = require("../config/database");
+const fs = require("fs");
+const path = require("path");
+const unzipper = require("unzipper");
+
+
+// =====================================================
+// SINGLE PHOTO UPLOAD
+// =====================================================
+
+const uploadPhoto = async (req, res) => {
+
+    try {
+
+        const {
+            graduate_id,
+            type
+        } = req.body;
+
+
+        if (!graduate_id || !type || !req.file) {
+
+            return res.status(400).json({
+                message: "Graduate, type and file required"
+            });
+
+        }
+
+
+        const photoType =
+            String(type).toUpperCase().trim();
+
+
+        if (
+            ![
+                "BEBAS",
+                "KUNCIR",
+                "IJAZAH"
+            ].includes(photoType)
+        ) {
+
+            return res.status(400).json({
+                message: "Invalid photo type"
+            });
+
+        }
+
+
+        const graduate = await db.query(
+            `
+            SELECT id
+            FROM graduates
+            WHERE id = $1
+            `,
+            [graduate_id]
+        );
+
+
+        if (!graduate.rows.length) {
+
+            return res.status(404).json({
+                message: "Graduate not found"
+            });
+
+        }
+
+
+        const url =
+            `/uploads/photos/${req.file.filename}`;
+
+
+        const result = await db.query(
+            `
+            INSERT INTO photos
+            (
+                graduate_id,
+                type,
+                url
+            )
+            VALUES ($1,$2,$3)
+            RETURNING *
+            `,
+            [
+                graduate_id,
+                photoType,
+                url
+            ]
+        );
+
+
+        return res.json({
+
+            message: "Upload success",
+
+            photo: result.rows[0]
+
+        });
+
+
+    } catch (error) {
+
+        console.error(
+            "SINGLE PHOTO ERROR:",
+            error
+        );
+
+
+        return res.status(500).json({
+            message: error.message
+        });
+
+    }
+
+};
 
 
 
+// =====================================================
+// BULK PHOTO UPLOAD
+// =====================================================
 
-// ===============================
-// UPLOAD PHOTO
-// ===============================
+const bulkUpload = async (req, res) => {
 
-const uploadPhoto = async(req,res)=>{
+    try {
 
-
-    console.log("=== PHOTO UPLOAD DEBUG ===");
-
-    console.log(
-        "BODY:",
-        req.body
-    );
-
-    console.log(
-        "FILE:",
-        req.file
-    );
-
-
-
-    try{
+        console.log(
+            "POST /api/admin/photos/bulk-upload"
+        );
 
 
         const {
-
-            graduate_id,
-
-            type
-
-        } = req.body || {};
+            event_id,
+            faculty
+        } = req.body;
 
 
+        // -------------------------------------------------
+        // VALIDATION
+        // -------------------------------------------------
+
+        if (!event_id) {
+
+            return res.status(400).json({
+                message: "Event required"
+            });
+
+        }
 
 
+        if (!faculty) {
 
-        if(
+            return res.status(400).json({
+                message: "Faculty required"
+            });
 
-            !graduate_id ||
+        }
 
-            !type ||
 
-            !req.file
+        if (!req.file) {
 
-        ){
+            return res.status(400).json({
+                message: "ZIP file required"
+            });
+
+        }
+
+
+        // -------------------------------------------------
+        // CHECK EVENT
+        // -------------------------------------------------
+
+        const eventCheck = await db.query(
+            `
+            SELECT
+                id,
+                name,
+                type
+            FROM events
+            WHERE id = $1
+            `,
+            [event_id]
+        );
+
+
+        if (!eventCheck.rows.length) {
+
+            return res.status(404).json({
+                message: "Event not found"
+            });
+
+        }
+
+
+        if (
+            eventCheck.rows[0].type !== "PERSONAL"
+        ) {
 
             return res.status(400).json({
 
                 message:
-                "Graduate, type and file required"
+                    "Bulk upload only available for PERSONAL event"
 
             });
 
         }
 
 
+        // -------------------------------------------------
+        // OPEN ZIP
+        // -------------------------------------------------
 
+        const zip =
+            await unzipper.Open.file(
+                req.file.path
+            );
 
 
+        const uploadFolder =
+            path.join(
+                "uploads",
+                "photos"
+            );
 
 
-        const url =
+        if (
+            !fs.existsSync(uploadFolder)
+        ) {
 
-        `/uploads/photos/${req.file.filename}`;
+            fs.mkdirSync(
+                uploadFolder,
+                {
+                    recursive: true
+                }
+            );
 
+        }
 
 
+        const success = [];
+        const failed = [];
 
 
+        // -------------------------------------------------
+        // PROCESS ZIP
+        // -------------------------------------------------
 
+        for (const item of zip.files) {
 
-        const result = await db.query(
+            if (
+                item.type !== "File"
+            ) {
 
-            `
-            INSERT INTO photos
-
-            (
-
-                graduate_id,
-
-                url,
-
-                type,
-
-                filename
-
-            )
-
-
-            VALUES
-
-            ($1,$2,$3,$4)
-
-
-            RETURNING *
-
-            `,
-
-
-            [
-
-                graduate_id,
-
-                url,
-
-                type,
-
-                req.file.filename
-
-            ]
-
-        );
-
-
-
-
-
-
-
-        res.status(201).json({
-
-            message:
-            "Photo uploaded",
-
-            photo:
-            result.rows[0]
-
-        });
-
-
-
-
-
-
-
-    }catch(error){
-
-
-        console.error(error);
-
-
-        res.status(500).json({
-
-            message:
-            error.message
-
-        });
-
-
-    }
-
-
-};
-
-
-
-
-
-
-
-
-
-// ===============================
-// GET PHOTOS BY GRADUATE
-// ===============================
-
-const getGraduatePhotos = async(req,res)=>{
-
-
-    const {
-
-        graduateId
-
-    } = req.params;
-
-
-
-
-    try{
-
-
-        const result = await db.query(
-
-            `
-            SELECT *
-
-            FROM photos
-
-            WHERE graduate_id=$1
-
-            ORDER BY created_at DESC
-
-            `,
-
-            [
-
-                graduateId
-
-            ]
-
-        );
-
-
-
-
-
-
-
-        const photos = {
-
-
-            BEBAS:[],
-
-            KUNCIR:[],
-
-            IJAZAH:[]
-
-
-        };
-
-
-
-
-
-
-        result.rows.forEach(photo=>{
-
-
-            if(
-                photos[photo.type]
-            ){
-
-                photos[photo.type].push(photo);
+                continue;
 
             }
 
 
-        });
+            // Mac ZIP sometimes creates __MACOSX files
+            if (
+                item.path.includes("__MACOSX")
+            ) {
+
+                continue;
+
+            }
 
 
+            const filename =
+                path.basename(item.path);
 
 
+            // skip hidden files
+            if (
+                filename.startsWith(".")
+            ) {
+
+                continue;
+
+            }
 
 
-
-        res.json(photos);
-
-
-
+            const extension =
+                path.extname(filename)
+                    .toLowerCase();
 
 
+            if (
+                ![
+                    ".jpg",
+                    ".jpeg",
+                    ".png",
+                    ".webp"
+                ].includes(extension)
+            ) {
 
-    }catch(error){
+                failed.push({
 
+                    file: filename,
 
-        console.error(error);
+                    reason:
+                        "Unsupported image format"
 
+                });
 
-        res.status(500).json({
+                continue;
 
-            message:
-            error.message
-
-        });
-
-
-    }
-
-
-};
-
-
-
-
+            }
 
 
+            // -------------------------------------------------
+            // PARSE FILENAME
+            //
+            // BEBAS_0001.jpg
+            // KUNCIR_0001.jpg
+            // IJAZAH_0001.jpg
+            // -------------------------------------------------
+
+            const cleanName =
+                path.basename(
+                    filename,
+                    extension
+                );
 
 
-
-// ===============================
-// DELETE PHOTO
-// ===============================
-
-const deletePhoto = async(req,res)=>{
+            const match =
+                cleanName.match(
+                    /^(BEBAS|KUNCIR|IJAZAH)_(\d{4})$/i
+                );
 
 
-    const {
+            if (!match) {
 
-        id
+                failed.push({
 
-    } = req.params;
+                    file: filename,
 
+                    reason:
+                        "Invalid filename. Example: BEBAS_0001.jpg"
 
+                });
 
+                continue;
 
-
-    try{
-
-
-        const result = await db.query(
-
-            `
-            DELETE FROM photos
-
-            WHERE id=$1
-
-            RETURNING *
-
-            `,
-
-            [
-
-                id
-
-            ]
-
-        );
+            }
 
 
+            const type =
+                match[1]
+                    .toUpperCase();
 
 
+            // IMPORTANT:
+            // 0001 tetap 0001
+            // 0192 tetap 0192
+
+            const graduationNumber =
+                match[2];
 
 
+            console.log({
 
-        if(result.rows.length===0){
+                event_id:
+                    String(event_id),
 
+                faculty:
+                    String(faculty),
 
-            return res.status(404).json({
-
-                message:
-                "Photo not found"
+                graduationNumber
 
             });
 
 
+            // -------------------------------------------------
+            // FIND GRADUATE
+            //
+            // MATCH:
+            // EVENT + FACULTY + GRADUATION NUMBER
+            // -------------------------------------------------
+
+            const graduate =
+                await db.query(
+                    `
+                    SELECT
+                        id,
+                        graduation_number,
+                        name,
+                        faculty,
+                        study_program
+                    FROM graduates
+                    WHERE event_id = $1
+                    AND LOWER(TRIM(faculty))
+                        = LOWER(TRIM($2))
+                    AND TRIM(graduation_number)
+                        = $3
+                    LIMIT 1
+                    `,
+                    [
+                        event_id,
+                        faculty,
+                        graduationNumber
+                    ]
+                );
+
+
+            // -------------------------------------------------
+            // GRADUATE NOT FOUND
+            // -------------------------------------------------
+
+            if (
+                !graduate.rows.length
+            ) {
+
+                failed.push({
+
+                    file: filename,
+
+                    reason:
+                        `Graduate not found: event=${event_id}, faculty=${faculty}, number=${graduationNumber}`
+
+                });
+
+                continue;
+
+            }
+
+
+            const graduateId =
+                graduate.rows[0].id;
+
+
+            // -------------------------------------------------
+            // CREATE UNIQUE FILENAME
+            // -------------------------------------------------
+
+            const safeFilename =
+                filename.replace(
+                    /[^a-zA-Z0-9._-]/g,
+                    "_"
+                );
+
+
+            const saveName =
+                `${Date.now()}-${graduateId}-${safeFilename}`;
+
+
+            const savePath =
+                path.join(
+                    uploadFolder,
+                    saveName
+                );
+
+
+            // -------------------------------------------------
+            // SAVE FILE
+            // -------------------------------------------------
+
+            await new Promise(
+                (resolve, reject) => {
+
+                    item
+                        .stream()
+                        .pipe(
+                            fs.createWriteStream(
+                                savePath
+                            )
+                        )
+                        .on(
+                            "finish",
+                            resolve
+                        )
+                        .on(
+                            "error",
+                            reject
+                        );
+
+                }
+            );
+
+
+            const url =
+                `/uploads/photos/${saveName}`;
+
+
+            // -------------------------------------------------
+            // INSERT PHOTO
+            // -------------------------------------------------
+
+            const photoResult =
+                await db.query(
+                    `
+                    INSERT INTO photos
+                    (
+                        graduate_id,
+                        type,
+                        url
+                    )
+                    VALUES ($1,$2,$3)
+                    RETURNING *
+                    `,
+                    [
+                        graduateId,
+                        type,
+                        url
+                    ]
+                );
+
+
+            success.push({
+
+                file:
+                    filename,
+
+                graduate_id:
+                    graduateId,
+
+                graduate:
+                    graduate.rows[0].name,
+
+                graduation_number:
+                    graduate.rows[0]
+                        .graduation_number,
+
+                faculty:
+                    graduate.rows[0]
+                        .faculty,
+
+                type,
+
+                photo:
+                    photoResult.rows[0]
+
+            });
+
         }
 
 
+        // -------------------------------------------------
+        // DELETE TEMP ZIP
+        // -------------------------------------------------
+
+        try {
+
+            if (
+                req.file.path &&
+                fs.existsSync(req.file.path)
+            ) {
+
+                fs.unlinkSync(
+                    req.file.path
+                );
+
+            }
+
+        } catch (cleanupError) {
+
+            console.error(
+                "ZIP CLEANUP ERROR:",
+                cleanupError
+            );
+
+        }
 
 
+        // -------------------------------------------------
+        // RESULT
+        // -------------------------------------------------
+
+        console.log(
+            "BULK SUCCESS:",
+            success.length
+        );
 
 
+        console.log(
+            "BULK FAILED:",
+            failed.length
+        );
 
 
-        res.json({
+        return res.json({
 
             message:
-            "Photo deleted",
+                "Bulk upload completed",
 
-            photo:
-            result.rows[0]
+            total:
+                success.length +
+                failed.length,
+
+            success_count:
+                success.length,
+
+            failed_count:
+                failed.length,
+
+            success,
+
+            failed
 
         });
 
 
+    } catch (error) {
+
+        console.error(
+            "BULK UPLOAD ERROR:",
+            error
+        );
 
 
-
-
-
-    }catch(error){
-
-
-        console.error(error);
-
-
-        res.status(500).json({
+        return res.status(500).json({
 
             message:
-            error.message
+                error.message
 
         });
-
 
     }
-
 
 };
 
 
-
-
-
-
-
-
-
 module.exports = {
 
-
     uploadPhoto,
-
-    getGraduatePhotos,
-
-    deletePhoto
-
+    bulkUpload
 
 };

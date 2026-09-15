@@ -1,7 +1,5 @@
 const db = require("../config/database");
-
 const XLSX = require("xlsx");
-
 
 
 
@@ -35,10 +33,20 @@ const getGraduates = async(req,res)=>{
 
 
 
+
         const result = await db.query(
 
             `
-            SELECT *
+            SELECT
+
+                id,
+                event_id,
+                nim,
+                graduation_number,
+                name,
+                faculty,
+                study_program,
+                created_at
 
             FROM graduates
 
@@ -57,11 +65,15 @@ const getGraduates = async(req,res)=>{
 
 
 
+
+
         res.json({
 
             graduates:result.rows
 
         });
+
+
 
 
 
@@ -76,6 +88,7 @@ const getGraduates = async(req,res)=>{
             message:error.message
 
         });
+
 
 
     }
@@ -101,30 +114,17 @@ const createGraduate = async(req,res)=>{
     try{
 
 
-        console.log(
-            "GRADUATE BODY:",
-            req.body
-        );
-
-
-
         const {
 
             event_id,
-
+            nim,
             graduation_number,
-
             name,
-
             faculty,
-
-            study_program,
-
-            email
+            study_program
 
 
-        } = req.body || {};
-
+        } = req.body;
 
 
 
@@ -134,13 +134,10 @@ const createGraduate = async(req,res)=>{
         if(
 
             !event_id ||
-
+            !nim ||
             !graduation_number ||
-
             !name ||
-
             !faculty ||
-
             !study_program
 
         ){
@@ -161,16 +158,17 @@ const createGraduate = async(req,res)=>{
 
 
 
+
         const check = await db.query(
 
             `
-            SELECT *
+            SELECT id
 
             FROM graduates
 
             WHERE event_id=$1
 
-            AND graduation_number=$2
+            AND nim=$2
 
             `,
 
@@ -178,7 +176,7 @@ const createGraduate = async(req,res)=>{
 
                 event_id,
 
-                graduation_number
+                nim
 
             ]
 
@@ -188,18 +186,22 @@ const createGraduate = async(req,res)=>{
 
 
 
-        if(check.rows.length > 0){
+
+
+        if(check.rows.length){
 
 
             return res.status(400).json({
 
                 message:
-                "Graduation number already exists"
+                "NIM already exists in this event"
 
             });
 
 
         }
+
+
 
 
 
@@ -213,49 +215,35 @@ const createGraduate = async(req,res)=>{
             INSERT INTO graduates
 
             (
-
                 event_id,
-
+                nim,
                 graduation_number,
-
                 name,
-
                 faculty,
-
-                study_program,
-
-                email
-
+                study_program
             )
-
 
             VALUES
 
             ($1,$2,$3,$4,$5,$6)
 
-
             RETURNING *
 
             `,
 
-
             [
 
                 event_id,
-
+                nim,
                 graduation_number,
-
                 name,
-
                 faculty,
-
-                study_program,
-
-                email || null
+                study_program
 
             ]
 
         );
+
 
 
 
@@ -272,7 +260,6 @@ const createGraduate = async(req,res)=>{
             result.rows[0]
 
         });
-
 
 
 
@@ -320,18 +307,14 @@ const updateGraduate = async(req,res)=>{
 
     const {
 
+        nim,
+        graduation_number,
         name,
-
         faculty,
-
-        study_program,
-
-        email
+        study_program
 
 
-    } = req.body || {};
-
-
+    } = req.body;
 
 
 
@@ -347,33 +330,31 @@ const updateGraduate = async(req,res)=>{
 
             SET
 
-                name=$1,
+                nim=$1,
 
-                faculty=$2,
+                graduation_number=$2,
 
-                study_program=$3,
+                name=$3,
 
-                email=$4
+                faculty=$4,
+
+                study_program=$5
 
 
-            WHERE id=$5
+            WHERE id=$6
 
 
             RETURNING *
 
             `,
 
-
             [
 
+                nim,
+                graduation_number,
                 name,
-
                 faculty,
-
                 study_program,
-
-                email || null,
-
                 id
 
             ]
@@ -386,7 +367,7 @@ const updateGraduate = async(req,res)=>{
 
 
 
-        if(result.rows.length === 0){
+        if(!result.rows.length){
 
 
             return res.status(404).json({
@@ -405,7 +386,6 @@ const updateGraduate = async(req,res)=>{
 
 
 
-
         res.json({
 
             message:
@@ -415,9 +395,6 @@ const updateGraduate = async(req,res)=>{
             result.rows[0]
 
         });
-
-
-
 
 
 
@@ -456,13 +433,8 @@ const deleteGraduate = async(req,res)=>{
 
 
     const {
-
         id
-
     } = req.params;
-
-
-
 
 
 
@@ -477,15 +449,12 @@ const deleteGraduate = async(req,res)=>{
 
             WHERE id=$1
 
-
             RETURNING *
 
             `,
 
             [
-
                 id
-
             ]
 
         );
@@ -494,10 +463,7 @@ const deleteGraduate = async(req,res)=>{
 
 
 
-
-
-
-        if(result.rows.length === 0){
+        if(!result.rows.length){
 
 
             return res.status(404).json({
@@ -516,7 +482,6 @@ const deleteGraduate = async(req,res)=>{
 
 
 
-
         res.json({
 
             message:
@@ -526,8 +491,6 @@ const deleteGraduate = async(req,res)=>{
             result.rows[0]
 
         });
-
-
 
 
 
@@ -569,6 +532,29 @@ const importExcel = async(req,res)=>{
     try{
 
 
+        const {
+            event_id
+        } = req.body;
+
+
+
+
+
+        if(!event_id){
+
+            return res.status(400).json({
+
+                message:
+                "Event required"
+
+            });
+
+        }
+
+
+
+
+
         if(!req.file){
 
 
@@ -588,34 +574,23 @@ const importExcel = async(req,res)=>{
 
 
 
-        const workbook = XLSX.readFile(
-
+        const workbook =
+        XLSX.readFile(
             req.file.path
-
         );
 
 
 
-
-
-
-
-        const sheet = workbook.Sheets[
-
+        const sheet =
+        workbook.Sheets[
             workbook.SheetNames[0]
-
         ];
 
 
 
-
-
-
-
-        const rows = XLSX.utils.sheet_to_json(
-
+        const rows =
+        XLSX.utils.sheet_to_json(
             sheet
-
         );
 
 
@@ -623,7 +598,12 @@ const importExcel = async(req,res)=>{
 
 
 
-        let inserted = 0;
+
+        let success=0;
+
+        let failed=[];
+
+
 
 
 
@@ -635,56 +615,181 @@ const importExcel = async(req,res)=>{
 
 
 
-            await db.query(
-
-                `
-                INSERT INTO graduates
-
-                (
-
-                    event_id,
-
-                    graduation_number,
-
-                    name,
-
-                    faculty,
-
-                    study_program,
-
-                    email
-
-                )
-
-
-                VALUES
-
-                ($1,$2,$3,$4,$5,$6)
-
-                `,
-
-
-                [
-
-                    row.event_id,
-
-                    row.graduation_number,
-
-                    row.name,
-
-                    row.faculty,
-
-                    row.study_program,
-
-                    row.email || null
-
-                ]
-
-            );
+            try{
 
 
 
-            inserted++;
+
+
+                if(
+
+                    !row.nim ||
+
+                    !row.graduation_number ||
+
+                    !row.name ||
+
+                    !row.faculty ||
+
+                    !row.study_program
+
+                ){
+
+                    failed.push({
+
+                        row,
+
+                        reason:
+                        "Incomplete data"
+
+                    });
+
+
+                    continue;
+
+
+                }
+
+
+
+
+
+
+
+
+
+                const check =
+                await db.query(
+
+                    `
+                    SELECT id
+
+                    FROM graduates
+
+                    WHERE event_id=$1
+
+                    AND nim=$2
+
+                    `,
+
+                    [
+
+                        event_id,
+
+                        row.nim
+
+                    ]
+
+                );
+
+
+
+
+
+
+
+                if(check.rows.length){
+
+
+                    failed.push({
+
+                        row,
+
+                        reason:
+                        "Duplicate NIM"
+
+                    });
+
+
+                    continue;
+
+
+                }
+
+
+
+
+
+
+
+
+
+
+                await db.query(
+
+                    `
+                    INSERT INTO graduates
+
+                    (
+
+                        event_id,
+
+                        nim,
+
+                        graduation_number,
+
+                        name,
+
+                        faculty,
+
+                        study_program
+
+                    )
+
+
+                    VALUES
+
+                    ($1,$2,$3,$4,$5,$6)
+
+                    `,
+
+
+                    [
+
+                        event_id,
+
+                        String(row.nim),
+
+                        String(row.graduation_number),
+
+                        row.name,
+
+                        row.faculty,
+
+                        row.study_program
+
+
+                    ]
+
+                );
+
+
+
+
+
+
+
+                success++;
+
+
+
+
+
+            }catch(err){
+
+
+                failed.push({
+
+                    row,
+
+                    reason:
+                    err.message
+
+                });
+
+
+            }
+
 
 
         }
@@ -696,15 +801,19 @@ const importExcel = async(req,res)=>{
 
 
 
+
         res.json({
 
             message:
-            "Import success",
+            "Import completed",
 
-            total:
-            inserted
+            success,
+
+            failed
 
         });
+
+
 
 
 
@@ -732,9 +841,16 @@ const importExcel = async(req,res)=>{
 
 
 
+
+
+
+
+
+
+
+
 // ==============================
 // GRADUATE OPTIONS
-// FOR PHOTO UPLOAD DROPDOWN
 // ==============================
 
 const getGraduateOptions = async(req,res)=>{
@@ -743,16 +859,24 @@ const getGraduateOptions = async(req,res)=>{
     try{
 
 
-        const result = await db.query(
+        const result =
+        await db.query(
 
             `
             SELECT
 
                 id,
+
+                nim,
+
                 graduation_number,
+
                 name,
+
                 faculty,
+
                 study_program
+
 
             FROM graduates
 
@@ -764,14 +888,9 @@ const getGraduateOptions = async(req,res)=>{
 
 
 
-
-
         res.json(
-
             result.rows
-
         );
-
 
 
 
@@ -779,14 +898,9 @@ const getGraduateOptions = async(req,res)=>{
     }catch(error){
 
 
-        console.error(error);
-
-
-
         res.status(500).json({
 
-            message:
-            error.message
+            message:error.message
 
         });
 
@@ -800,7 +914,10 @@ const getGraduateOptions = async(req,res)=>{
 
 
 
+
+
 module.exports = {
+
 
     getGraduates,
 
@@ -813,5 +930,6 @@ module.exports = {
     importExcel,
 
     getGraduateOptions
+
 
 };

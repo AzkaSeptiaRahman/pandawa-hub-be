@@ -2,23 +2,14 @@ const express = require("express");
 
 const router = express.Router();
 
-
-const authMiddleware =
-require("../middleware/authMiddleware");
-
-
-const upload =
-require("../middleware/uploadPhoto");
-
+const multer = require("multer");
 
 
 const {
 
     uploadPhoto,
 
-    getGraduatePhotos,
-
-    deletePhoto
+    bulkUpload
 
 } = require("../controllers/adminPhotoController");
 
@@ -26,39 +17,25 @@ const {
 
 
 
+const upload =
+multer({
 
-router.use(authMiddleware);
+    dest:"uploads/temp"
+
+});
 
 
 
 
 
+
+// SINGLE
 
 router.post(
 
     "/upload",
 
     upload.single("file"),
-
-    (req,res,next)=>{
-
-
-        console.log(
-            "MULTER CHECK BODY:",
-            req.body
-        );
-
-
-        console.log(
-            "MULTER CHECK FILE:",
-            req.file
-        );
-
-
-        next();
-
-
-    },
 
     uploadPhoto
 
@@ -69,30 +46,17 @@ router.post(
 
 
 
+// BULK ZIP
 
-router.get(
+router.post(
 
-    "/graduate/:graduateId",
+    "/bulk-upload",
 
-    getGraduatePhotos
+    upload.single("file"),
 
-);
-
-
-
-
-
-
-
-router.delete(
-
-    "/:id",
-
-    deletePhoto
+    bulkUpload
 
 );
-
-
 
 
 
