@@ -2,11 +2,10 @@ const express = require("express");
 
 const router = express.Router();
 
-
 const multer = require("multer");
 
-
-const authMiddleware = require("../middleware/authMiddleware");
+const authMiddleware =
+require("../middleware/authMiddleware");
 
 
 
@@ -20,30 +19,40 @@ const {
 
     deleteGraduate,
 
-    importExcel
+    importExcel,
+
+    getGraduateOptions
 
 
 } = require("../controllers/adminGraduateController");
 
 
 
+
+
 console.log({
 
-    getGraduates:typeof getGraduates,
+    getGraduates: typeof getGraduates,
 
-    createGraduate:typeof createGraduate,
+    createGraduate: typeof createGraduate,
 
-    updateGraduate:typeof updateGraduate,
+    updateGraduate: typeof updateGraduate,
 
-    deleteGraduate:typeof deleteGraduate,
+    deleteGraduate: typeof deleteGraduate,
 
-    importExcel:typeof importExcel
+    importExcel: typeof importExcel,
+
+    getGraduateOptions: typeof getGraduateOptions
 
 });
 
 
 
-// Excel upload
+
+
+
+
+
 
 const upload = multer({
 
@@ -58,8 +67,8 @@ const upload = multer({
 
 
 
-// Semua route graduate wajib login admin
 
+// aktifkan kalau CMS sudah pakai login
 router.use(authMiddleware);
 
 
@@ -69,9 +78,10 @@ router.use(authMiddleware);
 
 
 
-// GET GRADUATES
 
-// GET /api/admin/graduates?eventId=1
+// GET ALL GRADUATES
+
+// GET /api/admin/graduates
 
 router.get(
 
@@ -88,7 +98,26 @@ router.get(
 
 
 
-// CREATE GRADUATE
+// GET OPTIONS FOR PHOTO UPLOAD
+
+// GET /api/admin/graduates/options
+
+router.get(
+
+    "/options",
+
+    getGraduateOptions
+
+);
+
+
+
+
+
+
+
+
+// CREATE
 
 // POST /api/admin/graduates
 
@@ -107,7 +136,7 @@ router.post(
 
 
 
-// UPDATE GRADUATE
+// UPDATE
 
 // PUT /api/admin/graduates/:id
 
@@ -126,7 +155,7 @@ router.put(
 
 
 
-// DELETE GRADUATE
+// DELETE
 
 // DELETE /api/admin/graduates/:id
 
@@ -161,11 +190,6 @@ router.post(
 
 
 
-
-
-
-
-
 module.exports = {
 
     getGraduates,
@@ -176,8 +200,13 @@ module.exports = {
 
     deleteGraduate,
 
-    importExcel
+    importExcel,
+
+    getGraduateOptions
 
 };
+
+
+
 
 module.exports = router;

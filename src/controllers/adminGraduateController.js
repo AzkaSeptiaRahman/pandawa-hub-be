@@ -732,14 +732,75 @@ const importExcel = async(req,res)=>{
 
 
 
+// ==============================
+// GRADUATE OPTIONS
+// FOR PHOTO UPLOAD DROPDOWN
+// ==============================
 
+const getGraduateOptions = async(req,res)=>{
+
+
+    try{
+
+
+        const result = await db.query(
+
+            `
+            SELECT
+
+                id,
+                graduation_number,
+                name,
+                faculty,
+                study_program
+
+            FROM graduates
+
+            ORDER BY name ASC
+
+            `
+
+        );
+
+
+
+
+
+        res.json(
+
+            result.rows
+
+        );
+
+
+
+
+
+    }catch(error){
+
+
+        console.error(error);
+
+
+
+        res.status(500).json({
+
+            message:
+            error.message
+
+        });
+
+
+    }
+
+
+};
 
 
 
 
 
 module.exports = {
-
 
     getGraduates,
 
@@ -749,7 +810,8 @@ module.exports = {
 
     deleteGraduate,
 
-    importExcel
+    importExcel,
 
+    getGraduateOptions
 
 };
