@@ -1,19 +1,33 @@
 const express = require("express");
+
 const router = express.Router();
 
 const multer = require("multer");
+
 
 const authMiddleware =
 require("../middleware/authMiddleware");
 
 
+
 const {
 
     getEvents,
+
     getEventOptions,
+
     createEvent,
+
     updateEvent,
-    deleteEvent
+
+    deleteEvent,
+
+    uploadGallery,
+
+    addHighlight,
+
+    deleteMedia
+
 
 } = require("../controllers/adminEventController");
 
@@ -21,7 +35,18 @@ const {
 
 
 
-const upload = multer({
+
+
+
+
+// ======================================
+// MULTER CONFIG
+// ======================================
+
+
+// Event thumbnail
+
+const eventUpload = multer({
 
     dest:"uploads/events"
 
@@ -31,29 +56,71 @@ const upload = multer({
 
 
 
+// Gallery multiple upload
+
+const galleryUpload = multer({
+
+    dest:"uploads/events/gallery"
+
+});
+
+
+
+
+
+
+
+
+
+// ======================================
+// AUTH
+// ======================================
+
 router.use(authMiddleware);
 
 
 
 
 
-// GET ALL EVENTS
+
+
+
+
+// ======================================
+// EVENT CRUD
+// ======================================
+
+
+// GET ALL ADMIN EVENTS
 
 router.get(
+
     "/",
+
     getEvents
+
 );
 
 
 
 
 
-// DROPDOWN EVENT
+
+
+
+
+// EVENT DROPDOWN
 
 router.get(
+
     "/options",
+
     getEventOptions
+
 );
+
+
+
 
 
 
@@ -61,16 +128,19 @@ router.get(
 
 
 // CREATE EVENT
+// thumbnail
 
 router.post(
 
     "/",
 
-    upload.single("thumbnail"),
+    eventUpload.single("thumbnail"),
 
     createEvent
 
 );
+
+
 
 
 
@@ -84,11 +154,13 @@ router.put(
 
     "/:id",
 
-    upload.single("thumbnail"),
+    eventUpload.single("thumbnail"),
 
     updateEvent
 
 );
+
+
 
 
 
@@ -105,6 +177,98 @@ router.delete(
     deleteEvent
 
 );
+
+
+
+
+
+
+
+
+
+// ======================================
+// EVENT MEDIA MANAGEMENT
+// ======================================
+
+
+
+
+
+
+
+// UPLOAD GALLERY PHOTO
+//
+// FormData:
+//
+// event_id
+// photos[]
+
+
+router.post(
+
+    "/media/gallery",
+
+    galleryUpload.array(
+        "photos",
+        50
+    ),
+
+    uploadGallery
+
+);
+
+
+
+
+
+
+
+
+
+
+
+// ADD HIGHLIGHT
+//
+// JSON:
+//
+// {
+//   event_id,
+//   title,
+//   url
+// }
+
+
+router.post(
+
+    "/media/highlight",
+
+    addHighlight
+
+);
+
+
+
+
+
+
+
+
+
+
+
+// DELETE MEDIA
+
+
+router.delete(
+
+    "/media/:id",
+
+    deleteMedia
+
+);
+
+
+
 
 
 

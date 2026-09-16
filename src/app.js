@@ -1,22 +1,51 @@
 require("dotenv").config();
 
+
 const express = require("express");
+
 const cors = require("cors");
+
 const helmet = require("helmet");
+
 const rateLimit = require("express-rate-limit");
+
 const path = require("path");
 
+const fs = require("fs");
 
 
-const eventRoutes = require("./routes/eventRoutes");
-const photoRoutes = require("./routes/photoRoutes");
-const downloadRoutes = require("./routes/downloadRoutes");
 
-const authRoutes = require("./routes/authRoutes");
 
-const adminEventRoutes = require("./routes/adminEventRoutes");
-const adminGraduateRoutes = require("./routes/adminGraduateRoutes");
-const adminPhotoRoutes = require("./routes/adminPhotoRoutes");
+
+const eventRoutes =
+require("./routes/eventRoutes");
+
+
+const photoRoutes =
+require("./routes/photoRoutes");
+
+
+const downloadRoutes =
+require("./routes/downloadRoutes");
+
+
+const authRoutes =
+require("./routes/authRoutes");
+
+
+const adminEventRoutes =
+require("./routes/adminEventRoutes");
+
+
+const adminGraduateRoutes =
+require("./routes/adminGraduateRoutes");
+
+
+const adminPhotoRoutes =
+require("./routes/adminPhotoRoutes");
+
+
+
 
 
 
@@ -24,13 +53,87 @@ const adminPhotoRoutes = require("./routes/adminPhotoRoutes");
 const app = express();
 
 
-const PORT = process.env.PORT || 5000;
+const PORT =
+process.env.PORT || 5000;
 
 
 
 
 
+
+
+
+
+// =====================================
+// CREATE UPLOAD FOLDER
+// =====================================
+
+
+const uploadPath =
+path.join(
+    __dirname,
+    "../uploads"
+);
+
+
+
+if(!fs.existsSync(uploadPath)){
+
+
+    fs.mkdirSync(
+
+        uploadPath,
+
+        {
+            recursive:true
+        }
+
+    );
+
+
+}
+
+
+
+const galleryPath =
+path.join(
+
+    uploadPath,
+
+    "events/gallery"
+
+);
+
+
+
+if(!fs.existsSync(galleryPath)){
+
+
+    fs.mkdirSync(
+
+        galleryPath,
+
+        {
+            recursive:true
+        }
+
+    );
+
+
+}
+
+
+
+
+
+
+
+
+
+// =====================================
 // SECURITY
+// =====================================
+
 
 app.use(
 
@@ -47,23 +150,37 @@ app.use(
 
 
 
+
+
+
+// =====================================
 // CORS
+// =====================================
+
 
 app.use(
 
     cors({
 
         origin:
-        process.env.FRONTEND_URL || "http://localhost:3000",
+
+        process.env.FRONTEND_URL ||
+
+        "http://localhost:3000",
+
 
         methods:[
 
             "GET",
+
             "POST",
+
             "PUT",
+
             "DELETE"
 
         ],
+
 
         credentials:true
 
@@ -77,14 +194,21 @@ app.use(
 
 
 
+
+
+// =====================================
 // RATE LIMIT
+// =====================================
+
 
 app.use(
 
     rateLimit({
 
         windowMs:
+
         15 * 60 * 1000,
+
 
         max:100
 
@@ -99,7 +223,11 @@ app.use(
 
 
 
+
+// =====================================
 // BODY PARSER
+// =====================================
+
 
 app.use(
 
@@ -132,20 +260,30 @@ app.use(
 
 
 
-// REQUEST LOG
 
-app.use((req,res,next)=>{
+// =====================================
+// REQUEST LOG
+// =====================================
+
+
+app.use(
+
+(req,res,next)=>{
 
 
     console.log(
+
         `${req.method} ${req.url}`
+
     );
 
 
     next();
 
 
-});
+}
+
+);
 
 
 
@@ -154,7 +292,11 @@ app.use((req,res,next)=>{
 
 
 
-// STATIC FILE
+
+// =====================================
+// STATIC UPLOAD
+// =====================================
+
 
 app.use(
 
@@ -162,13 +304,7 @@ app.use(
 
     express.static(
 
-        path.join(
-
-            __dirname,
-
-            "../uploads"
-
-        )
+        uploadPath
 
     )
 
@@ -181,7 +317,11 @@ app.use(
 
 
 
-// PUBLIC
+
+// =====================================
+// PUBLIC ROUTES
+// =====================================
+
 
 app.use(
 
@@ -218,7 +358,11 @@ app.use(
 
 
 
+
+// =====================================
 // ADMIN AUTH
+// =====================================
+
 
 app.use(
 
@@ -235,7 +379,11 @@ app.use(
 
 
 
-// ADMIN EVENT
+
+// =====================================
+// ADMIN EVENTS
+// =====================================
+
 
 app.use(
 
@@ -252,7 +400,11 @@ app.use(
 
 
 
-// ADMIN GRADUATE
+
+// =====================================
+// ADMIN GRADUATES
+// =====================================
+
 
 app.use(
 
@@ -269,7 +421,11 @@ app.use(
 
 
 
-// ADMIN PHOTO
+
+// =====================================
+// ADMIN PHOTOS
+// =====================================
+
 
 app.use(
 
@@ -286,24 +442,29 @@ app.use(
 
 
 
-// HEALTH
+
+// =====================================
+// HEALTH CHECK
+// =====================================
+
 
 app.get(
 
-    "/",
+"/",
 
-    (req,res)=>{
-
-
-        res.json({
-
-            message:
-            "Pandawa API Running"
-
-        });
+(req,res)=>{
 
 
-    }
+    res.json({
+
+        message:
+
+        "Pandawa API Running"
+
+    });
+
+
+}
 
 );
 
@@ -314,27 +475,34 @@ app.get(
 
 
 
-// ERROR
+
+// =====================================
+// ERROR HANDLER
+// =====================================
+
 
 app.use(
 
-    (err,req,res,next)=>{
+(err,req,res,next)=>{
 
 
-        console.error(err);
+    console.error(err);
 
 
-        res.status(500).json({
 
-            message:
-            err.message
+    res.status(500).json({
 
-        });
+        message:
+
+        err.message
+
+    });
 
 
-    }
+}
 
 );
+
 
 
 

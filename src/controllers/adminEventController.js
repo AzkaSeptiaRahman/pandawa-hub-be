@@ -3,27 +3,24 @@ const db = require("../config/database");
 
 
 
-// ==============================
-// GET EVENTS
-// ==============================
+
+// ==========================================
+// GET ALL EVENTS
+// ==========================================
 
 const getEvents = async(req,res)=>{
 
-
     try{
 
+        const result = await db.query(
 
-        const result =
-        await db.query(`
-
+            `
             SELECT *
-
             FROM events
-
             ORDER BY id DESC
+            `
 
-        `);
-
+        );
 
 
         res.json({
@@ -33,12 +30,9 @@ const getEvents = async(req,res)=>{
         });
 
 
-
     }catch(error){
 
-
         console.error(error);
-
 
         res.status(500).json({
 
@@ -46,9 +40,7 @@ const getEvents = async(req,res)=>{
 
         });
 
-
     }
-
 
 };
 
@@ -59,43 +51,36 @@ const getEvents = async(req,res)=>{
 
 
 
-// ==============================
+
+// ==========================================
 // EVENT OPTIONS
-// ==============================
+// ==========================================
 
 const getEventOptions = async(req,res)=>{
-
 
     try{
 
 
-        const result =
-        await db.query(`
+        const result = await db.query(
 
+            `
             SELECT
-
                 id,
-
                 name,
-
                 type
-
             FROM events
-
             WHERE status='active'
-
             ORDER BY id DESC
+            `
 
-        `);
-
-
-
-        res.json(
-            result.rows
         );
 
 
 
+        res.json(result.rows);
+
+
+
     }catch(error){
 
 
@@ -108,7 +93,6 @@ const getEventOptions = async(req,res)=>{
 
     }
 
-
 };
 
 
@@ -119,252 +103,106 @@ const getEventOptions = async(req,res)=>{
 
 
 
-// ==============================
+// ==========================================
 // CREATE EVENT
-// ==============================
+// ==========================================
 
 const createEvent = async(req,res)=>{
+
+
+    const {
+
+        name,
+
+        slug,
+
+        date,
+
+        type,
+
+        description,
+
+        status
+
+
+    } = req.body;
+
+
+
+    let thumbnail = null;
+
+
+
+    if(req.file){
+
+        thumbnail =
+        "/uploads/events/" + req.file.filename;
+
+    }
+
+
 
 
     try{
 
 
-        const {
+        const result = await db.query(
 
-
-            name,
-
-            slug,
-
-            date,
-
-            type,
-
-            description,
-
-            status
-
-
-        } = req.body;
-
-
-
-
-
-
-
-        if(
-
-            !name ||
-
-            !slug ||
-
-            !type
-
-        ){
-
-            return res.status(400).json({
-
-                message:
-                "Name slug type required"
-
-            });
-
-        }
-
-
-
-
-
-
-
-
-        if(
-
-            type !== "PERSONAL" &&
-
-            type !== "GALLERY"
-
-        ){
-
-            return res.status(400).json({
-
-                message:
-                "Invalid event type"
-
-            });
-
-        }
-
-
-
-
-
-
-
-        let thumbnail=null;
-
-
-
-        if(req.file){
-
-
-            thumbnail =
-            "/uploads/events/" +
-            req.file.filename;
-
-
-        }
-
-
-
-
-
-
-
-
-        const check =
-        await db.query(`
-
-            SELECT id
-
-            FROM events
-
-            WHERE slug=$1
-
-        `,[
-
-            slug
-
-        ]);
-
-
-
-
-
-
-
-
-        if(check.rows.length){
-
-
-            return res.status(400).json({
-
-                message:
-                "Slug already exists"
-
-            });
-
-
-        }
-
-
-
-
-
-
-
-
-
-        const result =
-        await db.query(`
-
-
+            `
             INSERT INTO events
 
             (
-
                 name,
-
                 title,
-
-                date,
-
-                thumbnail,
-
-                type,
-
                 slug,
-
+                date,
+                type,
+                thumbnail,
                 description,
-
                 status
-
             )
 
 
             VALUES
 
-            (
-
-                $1,
-
-                $2,
-
-                $3,
-
-                $4,
-
-                $5,
-
-                $6,
-
-                $7,
-
-                $8
-
-            )
-
+            ($1,$2,$3,$4,$5,$6,$7,$8)
 
             RETURNING *
 
+            `,
 
-        `,[
+            [
 
+                name,
 
+                name,
 
-            name,
+                slug,
 
-            name,
+                date,
 
-            date || null,
+                type,
 
-            thumbnail,
+                thumbnail,
 
-            type,
+                description,
 
-            slug,
+                status
 
-            description || null,
+            ]
 
-            status || "active"
-
-
-
-        ]);
-
+        );
 
 
 
 
+        res.json({
 
+            message:"Event created",
 
-
-
-        res.status(201).json({
-
-            message:
-            "Event created",
-
-            event:
-            result.rows[0]
+            event:result.rows[0]
 
         });
-
-
-
-
-
 
 
 
@@ -394,9 +232,9 @@ const createEvent = async(req,res)=>{
 
 
 
-// ==============================
-// UPDATE EVENT
-// ==============================
+// ==========================================
+// UPDATE EVENT + THUMBNAIL
+// ==========================================
 
 const updateEvent = async(req,res)=>{
 
@@ -410,40 +248,313 @@ const updateEvent = async(req,res)=>{
 
 
 
+
+    const {
+
+        name,
+
+        title,
+
+        date,
+
+        description
+
+
+    } = req.body;
+
+
+
+
+
+    let thumbnail = null;
+
+
+
+
+
+    if(req.file){
+
+
+        thumbnail =
+
+        "/uploads/events/" +
+
+        req.file.filename;
+
+
+    }
+
+
+
+
+
+
+
+
+
     try{
 
 
-        const {
+
+        const result = await db.query(
 
 
-            name,
+            `
+            UPDATE events
 
-            slug,
+            SET
 
-            date,
+                name=$1,
 
-            type,
+                title=$2,
 
-            description,
+                date=$3,
 
-            status
+                description=$4,
 
+                thumbnail=
 
-        } = req.body;
-
-
-
-
-
-        let thumbnail;
+                COALESCE($5,thumbnail)
 
 
-        if(req.file){
+            WHERE id=$6
 
 
-            thumbnail =
-            "/uploads/events/" +
-            req.file.filename;
+            RETURNING *
+
+            `,
+
+
+
+            [
+
+                name,
+
+                title,
+
+                date,
+
+                description,
+
+                thumbnail,
+
+                id
+
+            ]
+
+
+        );
+
+
+
+
+
+        if(result.rows.length===0){
+
+
+            return res.status(404).json({
+
+                message:"Event not found"
+
+            });
+
+
+        }
+
+
+
+
+
+
+        res.json({
+
+            message:"Event updated",
+
+            event:result.rows[0]
+
+        });
+
+
+
+
+    }catch(error){
+
+
+        console.error(error);
+
+
+
+        res.status(500).json({
+
+            message:error.message
+
+        });
+
+
+    }
+
+
+};
+
+
+
+
+
+
+
+
+
+// ==========================================
+// DELETE EVENT
+// ==========================================
+
+const deleteEvent = async(req,res)=>{
+
+
+    const {id}=req.params;
+
+
+    try{
+
+
+        await db.query(
+
+            `
+            DELETE FROM events
+
+            WHERE id=$1
+
+            `,
+
+            [id]
+
+        );
+
+
+
+        res.json({
+
+            message:"Event deleted"
+
+        });
+
+
+
+    }catch(error){
+
+
+        res.status(500).json({
+
+            message:error.message
+
+        });
+
+
+    }
+
+
+};
+
+
+
+
+
+
+
+
+
+// ==========================================
+// UPLOAD GALLERY
+// ==========================================
+
+const uploadGallery = async(req,res)=>{
+
+
+    const {
+
+        event_id
+
+
+    } = req.body;
+
+
+
+
+
+    try{
+
+
+        const files = req.files || [];
+
+
+
+        let uploaded=[];
+
+
+
+
+
+        for(const file of files){
+
+
+            const url =
+
+            "/uploads/events/gallery/" +
+
+            file.filename;
+
+
+
+
+
+            const result = await db.query(
+
+                `
+                INSERT INTO event_media
+
+                (
+
+                    event_id,
+
+                    type,
+
+                    title,
+
+                    url
+
+                )
+
+
+                VALUES
+
+                ($1,$2,$3,$4)
+
+                RETURNING *
+
+                `,
+
+                [
+
+                    event_id,
+
+                    "gallery",
+
+                    "Gallery Photo",
+
+                    url
+
+                ]
+
+            );
+
+
+
+
+            uploaded.push(
+
+                result.rows[0]
+
+            );
 
 
         }
@@ -454,80 +565,11 @@ const updateEvent = async(req,res)=>{
 
 
 
-        const result =
-        await db.query(`
-
-
-            UPDATE events
-
-            SET
-
-
-                name=$1,
-
-                title=$2,
-
-                date=$3,
-
-                thumbnail=
-                COALESCE($4,thumbnail),
-
-                type=$5,
-
-                slug=$6,
-
-                description=$7,
-
-                status=$8
-
-
-
-            WHERE id=$9
-
-
-            RETURNING *
-
-
-
-        `,[
-
-
-            name,
-
-            name,
-
-            date || null,
-
-            thumbnail,
-
-            type,
-
-            slug,
-
-            description || null,
-
-            status || "active",
-
-            id
-
-
-        ]);
-
-
-
-
-
-
-
-
-
         res.json({
 
-            message:
-            "Event updated",
+            message:"Gallery uploaded",
 
-            event:
-            result.rows[0]
+            data:uploaded
 
         });
 
@@ -541,6 +583,7 @@ const updateEvent = async(req,res)=>{
         console.error(error);
 
 
+
         res.status(500).json({
 
             message:error.message
@@ -561,30 +604,74 @@ const updateEvent = async(req,res)=>{
 
 
 
-// ==============================
-// DELETE EVENT
-// ==============================
+// ==========================================
+// ADD HIGHLIGHT
+// ==========================================
 
-const deleteEvent = async(req,res)=>{
+const addHighlight = async(req,res)=>{
+
+
+    const {
+
+        event_id,
+
+        title,
+
+        url
+
+
+    } = req.body;
+
+
+
+
 
 
     try{
 
 
-        const result =
-        await db.query(`
+        const result = await db.query(
 
-            DELETE FROM events
+            `
+            INSERT INTO event_media
 
-            WHERE id=$1
+            (
+
+                event_id,
+
+                type,
+
+                title,
+
+                url
+
+            )
+
+
+            VALUES
+
+            ($1,$2,$3,$4)
+
 
             RETURNING *
 
-        `,[
+            `,
 
-            req.params.id
 
-        ]);
+            [
+
+                event_id,
+
+                "highlight",
+
+                title,
+
+                url
+
+            ]
+
+
+        );
 
 
 
@@ -592,11 +679,85 @@ const deleteEvent = async(req,res)=>{
 
         res.json({
 
-            message:
-            "Event deleted",
+            message:"Highlight added",
 
-            event:
-            result.rows[0]
+            data:result.rows[0]
+
+        });
+
+
+
+
+
+    }catch(error){
+
+
+        console.error(error);
+
+
+
+        res.status(500).json({
+
+            message:error.message
+
+        });
+
+
+    }
+
+
+};
+
+
+
+
+
+
+
+
+
+// ==========================================
+// DELETE MEDIA
+// ==========================================
+
+const deleteMedia = async(req,res)=>{
+
+
+    const {
+
+        id
+
+    } = req.params;
+
+
+
+    try{
+
+
+        await db.query(
+
+            `
+            DELETE FROM event_media
+
+            WHERE id=$1
+
+            `,
+
+            [
+
+                id
+
+            ]
+
+        );
+
+
+
+
+
+        res.json({
+
+            message:"Media deleted"
 
         });
 
@@ -625,7 +786,9 @@ const deleteEvent = async(req,res)=>{
 
 
 
-module.exports={
+
+
+module.exports = {
 
 
     getEvents,
@@ -636,7 +799,13 @@ module.exports={
 
     updateEvent,
 
-    deleteEvent
+    deleteEvent,
+
+    uploadGallery,
+
+    addHighlight,
+
+    deleteMedia
 
 
 };
