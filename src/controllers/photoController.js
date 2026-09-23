@@ -1,9 +1,10 @@
 const db = require("../config/database");
 
-
+const {
+    getPhotoUrl
+} = require("../config/s3");
 
 const searchPhoto = async(req,res)=>{
-
 
     const {
         eventId,
@@ -12,10 +13,7 @@ const searchPhoto = async(req,res)=>{
         studyProgram
     } = req.body;
 
-
-
     try {
-
 
         const graduate = await db.query(
 
@@ -37,10 +35,6 @@ const searchPhoto = async(req,res)=>{
 
         );
 
-
-
-
-
         if(graduate.rows.length === 0){
 
             return res.status(404).json({
@@ -50,10 +44,6 @@ const searchPhoto = async(req,res)=>{
             });
 
         }
-
-
-
-
 
         const photos = await db.query(
 
@@ -70,10 +60,6 @@ const searchPhoto = async(req,res)=>{
 
         );
 
-
-
-
-
         const groupedPhotos = {
 
             BEBAS: [],
@@ -84,27 +70,26 @@ const searchPhoto = async(req,res)=>{
 
         };
 
+        // Kolom "url" menyimpan object key di S3,
+        // ubah ke URL yang bisa diakses (presigned / public)
 
-
-
-
-        photos.rows.forEach((photo)=>{
-
+        for(const photo of photos.rows){
 
             if(groupedPhotos[photo.type]){
 
-                groupedPhotos[photo.type].push(photo);
+                groupedPhotos[photo.type].push({
+
+                    ...photo,
+
+                    url: await getPhotoUrl(
+                        photo.url
+                    )
+
+                });
 
             }
 
-
-        });
-
-
-
-
-
-
+        }
 
         res.json({
 
@@ -114,13 +99,7 @@ const searchPhoto = async(req,res)=>{
 
         });
 
-
-
-
-
-
     } catch(error){
-
 
         res.status(500).json({
 
@@ -128,14 +107,9 @@ const searchPhoto = async(req,res)=>{
 
         });
 
-
     }
 
-
 };
-
-
-
 
 module.exports = {
 

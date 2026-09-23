@@ -1,18 +1,16 @@
 const db = require("../config/database");
+
 const archiver = require("archiver");
 
-const path = require("path");
-
-
+const {
+    getObjectStream
+} = require("../config/s3");
 
 const downloadPhotos = async(req,res)=>{
 
-
     const { graduateId } = req.params;
 
-
     try {
-
 
         // Ambil data mahasiswa
 
@@ -30,8 +28,6 @@ const downloadPhotos = async(req,res)=>{
 
         );
 
-
-
         if(graduate.rows.length === 0){
 
             return res.status(404).json({
@@ -41,10 +37,6 @@ const downloadPhotos = async(req,res)=>{
             });
 
         }
-
-
-
-
 
         // Ambil foto
 
@@ -63,12 +55,7 @@ const downloadPhotos = async(req,res)=>{
 
         );
 
-
-
-
-
         if(photos.rows.length === 0){
-
 
             return res.status(404).json({
 
@@ -76,25 +63,11 @@ const downloadPhotos = async(req,res)=>{
 
             });
 
-
         }
-
-
-
-
-
-
-
 
         const studentName = graduate.rows[0]
             .name
             .replace(/\s+/g,"-");
-
-
-
-
-
-
 
         res.setHeader(
 
@@ -104,8 +77,6 @@ const downloadPhotos = async(req,res)=>{
 
         );
 
-
-
         res.setHeader(
 
             "Content-Disposition",
@@ -114,114 +85,119 @@ const downloadPhotos = async(req,res)=>{
 
         );
 
-
-
-
-
-
-
         const archive = archiver(
+
             "zip",
             {
                 zlib:{
                     level:9
                 }
             }
+
         );
 
+        archive.on(
 
+            "warning",
+            (err)=>{
 
+                console.warn(
+                    "Archive warning:",
+                    err.message
+                );
 
+            }
 
-
+        );
 
         archive.on(
+
             "error",
             (err)=>{
 
-                throw err;
+                console.error(
+                    "Archive error:",
+                    err
+                );
 
-            }
-        );
+                if(res.headersSent){
 
+                    res.end();
 
+                }else{
 
+                    res.status(500).json({
 
+                        message:"Failed to build archive"
 
-
-        archive.pipe(res);
-
-
-
-
-
-
-
-
-        photos.rows.forEach((photo)=>{
-
-
-            const filePath = path.join(
-
-                __dirname,
-
-                "../../",
-
-                photo.url
-
-            );
-
-
-
-
-
-            archive.file(
-
-                filePath,
-
-                {
-
-                    name:
-                    `${photo.type}/${photo.id}.jpg`
+                    });
 
                 }
 
-            );
+            }
 
+        );
 
-        });
+        archive.pipe(res);
 
+        // Stream tiap file dari object storage langsung ke dalam ZIP
+        // (tanpa menulis ke disk)
 
+        for(const photo of photos.rows){
 
+            try {
 
+                const stream = await getObjectStream(
+                    photo.url
+                );
 
+                archive.append(
+
+                    stream,
+
+                    {
+
+                        name:
+                        `${photo.type}/${photo.id}.jpg`
+
+                    }
+
+                );
+
+            }catch(err){
+
+                console.error(
+                    `Skip photo ${photo.id} (key: ${photo.url}):`,
+                    err.message
+                );
+
+            }
+
+        }
 
         await archive.finalize();
 
-
-
-
-
     }catch(error){
-
 
         console.log(error);
 
+        if(res.headersSent){
 
-        res.status(500).json({
+            res.end();
 
-            message:error.message
+        }else{
 
-        });
+            res.status(500).json({
 
+                message:error.message
+
+            });
+
+        }
 
     }
 
-
 };
-
-
-
 
 module.exports = {
 

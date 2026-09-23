@@ -8,7 +8,6 @@ const helmet = require("helmet");
 
 const rateLimit = require("express-rate-limit");
 
-const path = require("path");
 
 
 const eventRoutes = require("./routes/eventRoutes");
@@ -83,31 +82,6 @@ app.use(
 app.use(
     express.json()
 );
-
-
-
-
-
-// Static
-
-app.use(
-
-    "/uploads",
-
-    express.static(
-
-        path.join(
-            __dirname,
-            "../uploads"
-        )
-
-    )
-
-);
-
-
-
-
 
 // Routes
 
