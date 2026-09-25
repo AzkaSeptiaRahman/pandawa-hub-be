@@ -35,3 +35,15 @@ desktop.ini
 *.pid.lock
 .cache/
 tmp/
+
+# Local DB dumps / backups (jangan pernah commit!)
+*.dump
+*.sql.gz
+pandawa_backup.dump
+
+# Dump berisi data/PII — schema resmi ada di db/schema.sql
+database.sql
+
+# Artefak sementara
+.tmp-test/
+_*.js

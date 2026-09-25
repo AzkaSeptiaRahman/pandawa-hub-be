@@ -162,6 +162,77 @@ const getPhotoUrl = async(
 
 };
 
+// Nilai yang tersimpan di database bisa berupa:
+// - object key S3        -> "photos/1/BEBAS/uuid.jpg"
+// - URL absolut          -> "https://cdn.../file.jpg"
+// - path lokal lama      -> "/uploads/photos/file.jpg"
+
+const isStorageKey = (value)=>{
+
+    if(typeof value !== "string" || value.length === 0){
+
+        return false;
+
+    }
+
+    return !/^https?:\/\//i.test(value) &&
+        !value.startsWith("/uploads/");
+
+};
+
+// Ubah nilai kolom media menjadi URL yang bisa dipakai client.
+// Nilai lama (path lokal / URL absolut) dibiarkan apa adanya.
+
+const resolveObjectUrl = async(
+    value
+)=>{
+
+    if(!isStorageKey(value)){
+
+        return value;
+
+    }
+
+    return getPhotoUrl(
+        value
+    );
+
+};
+
+// Hapus object dari bucket, aman untuk nilai lama
+// (URL absolut / path lokal) karena akan diabaikan.
+
+const deleteObjectSafe = async(
+    value
+)=>{
+
+    if(!isStorageKey(value)){
+
+        return false;
+
+    }
+
+    try{
+
+        await deleteObject(
+            value
+        );
+
+        return true;
+
+    }catch(error){
+
+        console.error(
+            `Failed to delete object "${value}":`,
+            error.message
+        );
+
+        return false;
+
+    }
+
+};
+
 module.exports = {
 
     uploadObject,
@@ -170,8 +241,14 @@ module.exports = {
 
     deleteObject,
 
+    deleteObjectSafe,
+
     getPresignedUrl,
 
-    getPhotoUrl
+    getPhotoUrl,
+
+    isStorageKey,
+
+    resolveObjectUrl
 
 };

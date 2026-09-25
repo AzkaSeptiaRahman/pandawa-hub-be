@@ -1,4 +1,15 @@
 const db = require("../config/database");
+const crypto = require("crypto");
+
+const {
+    uploadObject,
+    deleteObjectSafe,
+    resolveObjectUrl
+} = require("../config/s3");
+
+const {
+    extensionOf
+} = require("../config/upload");
 
 
 
@@ -23,9 +34,23 @@ const getEvents = async(req,res)=>{
         );
 
 
+        const events = await Promise.all(
+
+            result.rows.map(
+                async(event)=>({
+                    ...event,
+                    thumbnail: await resolveObjectUrl(
+                        event.thumbnail
+                    )
+                })
+            )
+
+        );
+
+
         res.json({
 
-            events:result.rows
+            events
 
         });
 
@@ -36,7 +61,7 @@ const getEvents = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -86,7 +111,7 @@ const getEventOptions = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -136,7 +161,13 @@ const createEvent = async(req,res)=>{
     if(req.file){
 
         thumbnail =
-        "/uploads/events/" + req.file.filename;
+        `events/${crypto.randomUUID()}${extensionOf(req.file.originalname)}`;
+
+        await uploadObject(
+            thumbnail,
+            req.file.buffer,
+            req.file.mimetype
+        );
 
     }
 
@@ -214,7 +245,7 @@ const createEvent = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -257,6 +288,12 @@ const updateEvent = async(req,res)=>{
 
         date,
 
+        slug,
+
+        type,
+
+        status,
+
         description
 
 
@@ -277,9 +314,18 @@ const updateEvent = async(req,res)=>{
 
         thumbnail =
 
-        "/uploads/events/" +
+        `events/${crypto.randomUUID()}${extensionOf(req.file.originalname)}`;
 
-        req.file.filename;
+
+        await uploadObject(
+
+            thumbnail,
+
+            req.file.buffer,
+
+            req.file.mimetype
+
+        );
 
 
     }
@@ -296,6 +342,26 @@ const updateEvent = async(req,res)=>{
 
 
 
+        // Thumbnail lama diambil dulu supaya objeknya bisa
+        // dibersihkan dari storage setelah penggantian berhasil.
+        const previous = await db.query(
+
+            `
+            SELECT thumbnail
+            FROM events
+            WHERE id=$1
+            `,
+
+            [
+
+                id
+
+            ]
+
+        );
+
+
+
         const result = await db.query(
 
 
@@ -304,13 +370,19 @@ const updateEvent = async(req,res)=>{
 
             SET
 
-                name=$1,
+                name=COALESCE($1,name),
 
-                title=$2,
+                title=COALESCE($2,title),
 
-                date=$3,
+                date=COALESCE($3,date),
 
-                description=$4,
+                description=COALESCE($4,description),
+
+                slug=COALESCE($7,slug),
+
+                type=COALESCE($8,type),
+
+                status=COALESCE($9,status),
 
                 thumbnail=
 
@@ -338,7 +410,13 @@ const updateEvent = async(req,res)=>{
 
                 thumbnail,
 
-                id
+                id,
+
+                slug || null,
+
+                type || null,
+
+                status || null
 
             ]
 
@@ -352,6 +430,15 @@ const updateEvent = async(req,res)=>{
         if(result.rows.length===0){
 
 
+            // Event tidak ada: thumbnail yang barusan diunggah
+            // dibatalkan supaya tidak jadi objek yatim.
+            if(thumbnail){
+
+                await deleteObjectSafe(thumbnail);
+
+            }
+
+
             return res.status(404).json({
 
                 message:"Event not found"
@@ -361,6 +448,23 @@ const updateEvent = async(req,res)=>{
 
         }
 
+
+
+
+
+        // Ganti thumbnail: hapus objek lama yang sudah tidak dipakai.
+        if(
+            thumbnail &&
+            previous.rows.length &&
+            previous.rows[0].thumbnail &&
+            previous.rows[0].thumbnail !== thumbnail
+        ){
+
+            await deleteObjectSafe(
+                previous.rows[0].thumbnail
+            );
+
+        }
 
 
 
@@ -383,10 +487,18 @@ const updateEvent = async(req,res)=>{
         console.error(error);
 
 
+        // Update gagal: jangan tinggalkan thumbnail baru di storage.
+        if(thumbnail){
+
+            await deleteObjectSafe(thumbnail);
+
+        }
+
+
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -417,6 +529,33 @@ const deleteEvent = async(req,res)=>{
     try{
 
 
+        // Kumpulkan object yang harus dihapus dari storage
+        const media = await db.query(
+
+            `
+            SELECT url
+            FROM event_media
+            WHERE event_id=$1
+            `,
+
+            [id]
+
+        );
+
+
+        const event = await db.query(
+
+            `
+            SELECT thumbnail
+            FROM events
+            WHERE id=$1
+            `,
+
+            [id]
+
+        );
+
+
         await db.query(
 
             `
@@ -429,6 +568,30 @@ const deleteEvent = async(req,res)=>{
             [id]
 
         );
+
+
+
+        // Hapus object setelah row terhapus (best effort)
+        const keys = [
+
+            ...media.rows.map(
+                (row)=>row.url
+            ),
+
+            event.rows.length
+                ? event.rows[0].thumbnail
+                : null
+
+        ].filter(Boolean);
+
+
+        for(const key of keys){
+
+            await deleteObjectSafe(
+                key
+            );
+
+        }
 
 
 
@@ -445,7 +608,7 @@ const deleteEvent = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -499,9 +662,18 @@ const uploadGallery = async(req,res)=>{
 
             const url =
 
-            "/uploads/events/gallery/" +
+            `events/gallery/${crypto.randomUUID()}${extensionOf(file.originalname)}`;
 
-            file.filename;
+
+            await uploadObject(
+
+                url,
+
+                file.buffer,
+
+                file.mimetype
+
+            );
 
 
 
@@ -586,7 +758,7 @@ const uploadGallery = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -698,7 +870,7 @@ const addHighlight = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -734,6 +906,25 @@ const deleteMedia = async(req,res)=>{
     try{
 
 
+        // Ambil dulu agar object storage bisa dibersihkan
+        const existing = await db.query(
+
+            `
+            SELECT url
+            FROM event_media
+            WHERE id=$1
+            `,
+
+            [
+
+                id
+
+            ]
+
+        );
+
+
+
         await db.query(
 
             `
@@ -750,6 +941,18 @@ const deleteMedia = async(req,res)=>{
             ]
 
         );
+
+
+
+        if(existing.rows.length){
+
+            await deleteObjectSafe(
+
+                existing.rows[0].url
+
+            );
+
+        }
 
 
 
@@ -770,7 +973,7 @@ const deleteMedia = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -779,6 +982,123 @@ const deleteMedia = async(req,res)=>{
 
 
 };
+
+
+
+
+
+
+
+
+
+// ==========================================
+// UPDATE MEDIA
+// ==========================================
+
+const updateMedia = async(req,res)=>{
+
+
+    const {
+
+        id
+
+    } = req.params;
+
+
+    const {
+
+        title
+
+    } = req.body;
+
+
+
+    try{
+
+
+        if(title === undefined){
+
+
+            return res.status(400).json({
+
+                message:"Title is required"
+
+            });
+
+
+        }
+
+
+
+        const result = await db.query(
+
+            `
+            UPDATE event_media
+
+            SET title=$2
+
+            WHERE id=$1
+
+            RETURNING *
+            `,
+
+            [
+
+                id,
+
+                title
+
+            ]
+
+        );
+
+
+
+        if(!result.rows.length){
+
+
+            return res.status(404).json({
+
+                message:"Media not found"
+
+            });
+
+
+        }
+
+
+
+        res.json({
+
+            message:"Media updated",
+
+            data:result.rows[0]
+
+        });
+
+
+
+
+
+    }catch(error){
+
+
+        console.error(error);
+
+
+        res.status(500).json({
+
+            message:"Internal server error"
+
+        });
+
+
+    }
+
+
+};
+
+
 
 
 
@@ -804,6 +1124,8 @@ module.exports = {
     uploadGallery,
 
     addHighlight,
+
+    updateMedia,
 
     deleteMedia
 

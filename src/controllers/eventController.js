@@ -1,5 +1,9 @@
 const db = require("../config/database");
 
+const {
+    resolveObjectUrl
+} = require("../config/s3");
+
 
 
 
@@ -29,9 +33,29 @@ ORDER BY created_at DESC
 
 
 
+        const events = await Promise.all(
+
+            result.rows.map(
+
+                async(event)=>({
+
+                    ...event,
+
+                    thumbnail: await resolveObjectUrl(
+                        event.thumbnail
+                    )
+
+                })
+
+            )
+
+        );
+
+
+
         res.json({
 
-            events: result.rows
+            events
 
         });
 
@@ -45,7 +69,7 @@ ORDER BY created_at DESC
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -54,7 +78,6 @@ ORDER BY created_at DESC
 
 
 };
-
 
 
 
@@ -148,7 +171,29 @@ ORDER BY id ASC
 
             ...event.rows[0],
 
-            media:media.rows
+            thumbnail: await resolveObjectUrl(
+
+                event.rows[0].thumbnail
+
+            ),
+
+            media: await Promise.all(
+
+                media.rows.map(
+
+                    async(item)=>({
+
+                        ...item,
+
+                        url: await resolveObjectUrl(
+                            item.url
+                        )
+
+                    })
+
+                )
+
+            )
 
         });
 
@@ -166,7 +211,7 @@ ORDER BY id ASC
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -175,296 +220,6 @@ ORDER BY id ASC
 
 
 };
-
-
-
-
-
-
-
-
-
-
-
-// ==========================================
-// ADMIN GET EVENTS
-// ==========================================
-
-const getAdminEvents = async(req,res)=>{
-
-
-    try{
-
-
-        const result = await db.query(
-
-`
-SELECT *
-
-FROM events
-
-ORDER BY created_at DESC
-
-`
-
-        );
-
-
-
-
-        res.json({
-
-            events:result.rows
-
-        });
-
-
-
-
-    }catch(error){
-
-
-
-        console.error(error);
-
-
-
-        res.status(500).json({
-
-            message:error.message
-
-        });
-
-
-    }
-
-
-};
-
-
-
-
-
-
-
-
-// ==========================================
-// CREATE EVENT
-// ==========================================
-
-const createEvent = async(req,res)=>{
-
-
-    try{
-
-
-        const {
-
-            name,
-
-            slug,
-
-            date,
-
-            type,
-
-            description,
-
-            status
-
-
-        } = req.body;
-
-
-
-
-
-        let thumbnail=null;
-
-
-
-
-
-        if(req.file){
-
-
-            thumbnail =
-            `/uploads/events/${req.file.filename}`;
-
-
-        }
-
-
-
-
-
-
-
-
-
-        const result = await db.query(
-
-`
-INSERT INTO events
-
-(
-name,
-title,
-date,
-thumbnail,
-type,
-slug,
-description,
-status
-)
-
-VALUES
-
-($1,$2,$3,$4,$5,$6,$7,$8)
-
-RETURNING *
-
-`,
-
-        [
-
-            name,
-
-            name,
-
-            date,
-
-            thumbnail,
-
-            type,
-
-            slug,
-
-            description,
-
-            status
-
-        ]
-
-        );
-
-
-
-
-
-
-        res.json({
-
-            message:"Event created",
-
-            event:result.rows[0]
-
-        });
-
-
-
-
-
-    }catch(error){
-
-
-        console.error(error);
-
-
-
-        res.status(500).json({
-
-            message:error.message
-
-        });
-
-
-    }
-
-
-};
-
-
-
-
-
-
-
-
-
-
-
-// ==========================================
-// DELETE EVENT
-// ==========================================
-
-const deleteEvent = async(req,res)=>{
-
-
-    try{
-
-
-        const {
-            id
-        } = req.params;
-
-
-
-
-
-        await db.query(
-
-`
-DELETE FROM events
-
-WHERE id=$1
-
-`,
-
-        [
-            id
-        ]
-
-        );
-
-
-
-
-
-
-        res.json({
-
-            message:"Event deleted"
-
-        });
-
-
-
-
-    }catch(error){
-
-
-        console.error(error);
-
-
-
-        res.status(500).json({
-
-            message:error.message
-
-        });
-
-
-
-    }
-
-
-};
-
-
-
-
-
 
 
 
@@ -475,13 +230,7 @@ module.exports={
 
     getEvents,
 
-    getEventDetail,
-
-    getAdminEvents,
-
-    createEvent,
-
-    deleteEvent
+    getEventDetail
 
 
 };

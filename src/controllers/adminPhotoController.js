@@ -1,7 +1,58 @@
 const db = require("../config/database");
-const fs = require("fs");
-const path = require("path");
+const crypto = require("crypto");
 const unzipper = require("unzipper");
+
+const {
+    uploadObject,
+    deleteObjectSafe
+} = require("../config/s3");
+
+const {
+    extensionOf
+} = require("../config/upload");
+
+
+// =====================================================
+// LIST PHOTOS
+// =====================================================
+
+const getPhotos = async (req, res) => {
+
+    try {
+
+        const values = [];
+        const conditions = [];
+
+        if (req.query.graduateId) {
+            values.push(req.query.graduateId);
+            conditions.push(`p.graduate_id=$${values.length}`);
+        }
+
+        const result = await db.query(
+            `
+            SELECT p.*, g.name, g.graduation_number
+            FROM photos p
+            JOIN graduates g ON g.id=p.graduate_id
+            ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+            ORDER BY p.id DESC
+            `,
+            values
+        );
+
+        return res.json({
+            photos: result.rows
+        });
+
+    } catch (error) {
+
+        console.error("GET PHOTOS ERROR:", error);
+
+        return res.status(500).json({
+            message: "Internal server error"
+        });
+    }
+
+};
 
 
 // =====================================================
@@ -66,7 +117,13 @@ const uploadPhoto = async (req, res) => {
 
 
         const url =
-            `/uploads/photos/${req.file.filename}`;
+            `photos/${graduate_id}/${photoType}/${crypto.randomUUID()}${extensionOf(req.file.originalname)}`;
+
+        await uploadObject(
+            url,
+            req.file.buffer,
+            req.file.mimetype
+        );
 
 
         const result = await db.query(
@@ -75,15 +132,19 @@ const uploadPhoto = async (req, res) => {
             (
                 graduate_id,
                 type,
-                url
+                url,
+                filename,
+                size
             )
-            VALUES ($1,$2,$3)
+            VALUES ($1,$2,$3,$4,$5)
             RETURNING *
             `,
             [
                 graduate_id,
                 photoType,
-                url
+                url,
+                req.file.originalname,
+                req.file.size
             ]
         );
 
@@ -106,13 +167,55 @@ const uploadPhoto = async (req, res) => {
 
 
         return res.status(500).json({
-            message: error.message
+            message:"Internal server error"
         });
 
     }
 
 };
 
+
+
+// =====================================================
+// DELETE PHOTO
+// =====================================================
+
+const deletePhoto = async (req, res) => {
+
+    try {
+
+        const result = await db.query(
+            `
+            DELETE FROM photos
+            WHERE id=$1
+            RETURNING *
+            `,
+            [req.params.id]
+        );
+
+        if (!result.rows.length) {
+            return res.status(404).json({
+                message: "Photo not found"
+            });
+        }
+
+        await deleteObjectSafe(result.rows[0].url);
+
+        return res.json({
+            message: "Photo deleted",
+            photo: result.rows[0]
+        });
+
+    } catch (error) {
+
+        console.error("DELETE PHOTO ERROR:", error);
+
+        return res.status(500).json({
+            message: "Internal server error"
+        });
+    }
+
+};
 
 
 // =====================================================
@@ -206,38 +309,57 @@ const bulkUpload = async (req, res) => {
 
 
         // -------------------------------------------------
-        // OPEN ZIP
+        // OPEN ZIP (dari memory, tidak menyentuh disk)
         // -------------------------------------------------
 
         const zip =
-            await unzipper.Open.file(
-                req.file.path
+            await unzipper.Open.buffer(
+                req.file.buffer
             );
-
-
-        const uploadFolder =
-            path.join(
-                "uploads",
-                "photos"
-            );
-
-
-        if (
-            !fs.existsSync(uploadFolder)
-        ) {
-
-            fs.mkdirSync(
-                uploadFolder,
-                {
-                    recursive: true
-                }
-            );
-
-        }
 
 
         const success = [];
         const failed = [];
+        const skipped = [];
+
+        let totalUncompressed = 0;
+
+        const MAX_UNCOMPRESSED =
+            parseInt(
+                process.env.BULK_MAX_UNCOMPRESSED ||
+                String(500 * 1024 * 1024),
+                10
+            );
+
+
+        // -------------------------------------------------
+        // TRACK S3 OBJECTS UPLOADED IN THIS RUN
+        //
+        // Dipakai untuk kompensasi bila transaksi di-rollback,
+        // supaya tidak ada objek yatim di object storage.
+        // -------------------------------------------------
+
+        const uploadedKeys = [];
+
+
+        // -------------------------------------------------
+        // DEDUPLIKASI DALAM SATU ZIP
+        //
+        // Kunci: graduate + type. Dua entri dengan nama berbeda
+        // tetapi graduate/type yang sama hanya diambil satu.
+        // -------------------------------------------------
+
+        const seenInZip = new Set();
+
+
+        // Seluruh proses dibungkus satu transaksi sehingga
+        // kegagalan di tengah tidak meninggalkan data separuh jadi.
+        const client = await db.connect();
+
+
+        try {
+
+            await client.query("BEGIN");
 
 
         // -------------------------------------------------
@@ -266,7 +388,8 @@ const bulkUpload = async (req, res) => {
 
 
             const filename =
-                path.basename(item.path);
+                item.path.split("/").pop()
+                    .split("\\").pop();
 
 
             // skip hidden files
@@ -279,9 +402,32 @@ const bulkUpload = async (req, res) => {
             }
 
 
+            totalUncompressed +=
+                item.uncompressedSize || 0;
+
+
+            if (
+                totalUncompressed >
+                MAX_UNCOMPRESSED
+            ) {
+
+                throw Object.assign(
+                    new Error(
+                        "ZIP contents are too large"
+                    ),
+                    {
+                        status: 400
+                    }
+                );
+
+            }
+
+
             const extension =
-                path.extname(filename)
-                    .toLowerCase();
+                (
+                    filename.match(/\.[0-9a-z]+$/i) ||
+                    [""]
+                )[0].toLowerCase();
 
 
             if (
@@ -316,9 +462,9 @@ const bulkUpload = async (req, res) => {
             // -------------------------------------------------
 
             const cleanName =
-                path.basename(
-                    filename,
-                    extension
+                filename.slice(
+                    0,
+                    filename.length - extension.length
                 );
 
 
@@ -357,17 +503,28 @@ const bulkUpload = async (req, res) => {
                 match[2];
 
 
-            console.log({
+            // -------------------------------------------------
+            // DEDUPLIKASI: satu graduate hanya boleh punya satu
+            // foto per type dalam satu proses upload.
+            // -------------------------------------------------
 
-                event_id:
-                    String(event_id),
+            const dedupKey =
+                `${graduationNumber}|${type}`;
 
-                faculty:
-                    String(faculty),
+            if (seenInZip.has(dedupKey)) {
 
-                graduationNumber
+                skipped.push({
 
-            });
+                    file: filename,
+
+                    reason:
+                        `Duplicate in ZIP: ${type} ${graduationNumber} already included`
+
+                });
+
+                continue;
+
+            }
 
 
             // -------------------------------------------------
@@ -378,7 +535,7 @@ const bulkUpload = async (req, res) => {
             // -------------------------------------------------
 
             const graduate =
-                await db.query(
+                await client.query(
                     `
                     SELECT
                         id,
@@ -429,56 +586,74 @@ const bulkUpload = async (req, res) => {
 
 
             // -------------------------------------------------
-            // CREATE UNIQUE FILENAME
+            // CEK DUPLIKAT DI DATABASE
+            //
+            // Foto dengan graduate + type yang sama sudah ada.
             // -------------------------------------------------
 
-            const safeFilename =
-                filename.replace(
-                    /[^a-zA-Z0-9._-]/g,
-                    "_"
+            const existing =
+                await client.query(
+                    `
+                    SELECT id
+                    FROM photos
+                    WHERE graduate_id = $1
+                    AND UPPER(TRIM(type)) = $2
+                    LIMIT 1
+                    `,
+                    [
+                        graduateId,
+                        type
+                    ]
                 );
 
 
-            const saveName =
-                `${Date.now()}-${graduateId}-${safeFilename}`;
+            if (existing.rows.length) {
 
+                skipped.push({
 
-            const savePath =
-                path.join(
-                    uploadFolder,
-                    saveName
-                );
+                    file: filename,
+
+                    graduate:
+                        graduate.rows[0].name,
+
+                    reason:
+                        `${type} photo already exists for this graduate`
+
+                });
+
+                continue;
+
+            }
 
 
             // -------------------------------------------------
-            // SAVE FILE
+            // UPLOAD KE OBJECT STORAGE
             // -------------------------------------------------
 
-            await new Promise(
-                (resolve, reject) => {
+            const buffer =
+                await item.buffer();
 
-                    item
-                        .stream()
-                        .pipe(
-                            fs.createWriteStream(
-                                savePath
-                            )
-                        )
-                        .on(
-                            "finish",
-                            resolve
-                        )
-                        .on(
-                            "error",
-                            reject
-                        );
 
-                }
-            );
+            const mimetype =
+                extension === ".png"
+                    ? "image/png"
+                    : extension === ".webp"
+                        ? "image/webp"
+                        : "image/jpeg";
 
 
             const url =
-                `/uploads/photos/${saveName}`;
+                `photos/${graduateId}/${type}/${crypto.randomUUID()}${extension}`;
+
+
+            await uploadObject(
+                url,
+                buffer,
+                mimetype
+            );
+
+
+            uploadedKeys.push(url);
 
 
             // -------------------------------------------------
@@ -486,21 +661,25 @@ const bulkUpload = async (req, res) => {
             // -------------------------------------------------
 
             const photoResult =
-                await db.query(
+                await client.query(
                     `
                     INSERT INTO photos
                     (
                         graduate_id,
                         type,
-                        url
+                        url,
+                        filename,
+                        size
                     )
-                    VALUES ($1,$2,$3)
+                    VALUES ($1,$2,$3,$4,$5)
                     RETURNING *
                     `,
                     [
                         graduateId,
                         type,
-                        url
+                        url,
+                        filename,
+                        buffer.length
                     ]
                 );
 
@@ -531,32 +710,44 @@ const bulkUpload = async (req, res) => {
 
             });
 
+
+            seenInZip.add(dedupKey);
+
         }
 
 
-        // -------------------------------------------------
-        // DELETE TEMP ZIP
-        // -------------------------------------------------
+        await client.query("COMMIT");
 
-        try {
 
-            if (
-                req.file.path &&
-                fs.existsSync(req.file.path)
-            ) {
+        } catch (transactionError) {
 
-                fs.unlinkSync(
-                    req.file.path
-                );
+
+            await client.query("ROLLBACK");
+
+
+            // Hapus objek S3 yang sudah terlanjur diunggah,
+            // karena baris database-nya dibatalkan.
+            console.warn(
+                "BULK ROLLBACK: compensating",
+                uploadedKeys.length,
+                "uploaded object(s)"
+            );
+
+            for (const key of uploadedKeys) {
+
+                await deleteObjectSafe(key);
 
             }
 
-        } catch (cleanupError) {
 
-            console.error(
-                "ZIP CLEANUP ERROR:",
-                cleanupError
-            );
+            throw transactionError;
+
+
+        } finally {
+
+
+            client.release();
+
 
         }
 
@@ -577,6 +768,12 @@ const bulkUpload = async (req, res) => {
         );
 
 
+        console.log(
+            "BULK SKIPPED:",
+            skipped.length
+        );
+
+
         return res.json({
 
             message:
@@ -584,7 +781,8 @@ const bulkUpload = async (req, res) => {
 
             total:
                 success.length +
-                failed.length,
+                failed.length +
+                skipped.length,
 
             success_count:
                 success.length,
@@ -592,9 +790,14 @@ const bulkUpload = async (req, res) => {
             failed_count:
                 failed.length,
 
+            skipped_count:
+                skipped.length,
+
             success,
 
-            failed
+            failed,
+
+            skipped
 
         });
 
@@ -607,10 +810,12 @@ const bulkUpload = async (req, res) => {
         );
 
 
-        return res.status(500).json({
+        return res.status(error.status || 500).json({
 
             message:
-                error.message
+                error.status
+                    ? error.message
+                    : "Internal server error"
 
         });
 
@@ -621,7 +826,9 @@ const bulkUpload = async (req, res) => {
 
 module.exports = {
 
+    getPhotos,
     uploadPhoto,
-    bulkUpload
+    bulkUpload,
+    deletePhoto
 
 };

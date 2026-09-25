@@ -1,6 +1,9 @@
 const db = require("../config/database");
-const XLSX = require("xlsx");
 
+const {
+    deleteObjectSafe
+} = require("../config/s3");
+const XLSX = require("xlsx");
 
 
 
@@ -12,7 +15,10 @@ const getGraduates = async(req,res)=>{
 
 
     const {
-        eventId
+        eventId,
+        page,
+        limit,
+        search
     } = req.query;
 
 
@@ -32,11 +38,60 @@ const getGraduates = async(req,res)=>{
 
 
 
+        // Pagination opsional. Tanpa "page", perilaku lama dipertahankan
+        // (kirim semua) agar tetap kompatibel.
+        const paginate = page !== undefined;
+
+        const pageNumber = Math.max(
+            parseInt(page, 10) || 1,
+            1
+        );
+
+        const perPage = Math.min(
+            Math.max(parseInt(limit, 10) || 25, 1),
+            100
+        );
+
+        const term = String(search || "").trim();
 
 
-        const result = await db.query(
+
+        const conditions = ["event_id=$1"];
+        const values = [eventId];
+
+        if(term){
+
+            values.push(`%${term}%`);
+
+            const i = values.length;
+
+            conditions.push(
+                `(name ILIKE $${i} OR nim ILIKE $${i} OR graduation_number ILIKE $${i})`
+            );
+
+        }
+
+
+
+        const where = conditions.join(" AND ");
+
+
+
+        const totalResult = await db.query(
 
             `
+            SELECT COUNT(*)::int AS total
+            FROM graduates
+            WHERE ${where}
+            `,
+
+            values
+
+        );
+
+
+
+        let sql = `
             SELECT
 
                 id,
@@ -50,30 +105,48 @@ const getGraduates = async(req,res)=>{
 
             FROM graduates
 
-            WHERE event_id=$1
+            WHERE ${where}
 
             ORDER BY graduation_number ASC
+        `;
 
-            `,
 
-            [
-                eventId
-            ]
+
+        if(paginate){
+
+            values.push(perPage);
+            const limitIdx = values.length;
+
+            values.push((pageNumber - 1) * perPage);
+            const offsetIdx = values.length;
+
+            sql += ` LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+
+        }
+
+
+
+        const result = await db.query(
+
+            sql,
+
+            values
 
         );
 
 
 
-
-
-
         res.json({
 
-            graduates:result.rows
+            graduates:result.rows,
+
+            total:totalResult.rows[0].total,
+
+            page:paginate ? pageNumber : 1,
+
+            limit:paginate ? perPage : totalResult.rows[0].total
 
         });
-
-
 
 
 
@@ -85,10 +158,9 @@ const getGraduates = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
-
 
 
     }
@@ -103,11 +175,9 @@ const getGraduates = async(req,res)=>{
 
 
 
-
 // ==============================
 // CREATE GRADUATE
 // ==============================
-
 const createGraduate = async(req,res)=>{
 
 
@@ -274,7 +344,7 @@ const createGraduate = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -407,7 +477,7 @@ const updateGraduate = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -440,6 +510,22 @@ const deleteGraduate = async(req,res)=>{
 
 
     try{
+
+
+        // Ambil foto dulu agar object storage bisa dibersihkan
+        const photos = await db.query(
+
+            `
+            SELECT url
+            FROM photos
+            WHERE graduate_id=$1
+            `,
+
+            [
+                id
+            ]
+
+        );
 
 
         const result = await db.query(
@@ -482,6 +568,18 @@ const deleteGraduate = async(req,res)=>{
 
 
 
+        // Hapus foto dari object storage (best effort)
+        for(const photo of photos.rows){
+
+            await deleteObjectSafe(
+                photo.url
+            );
+
+        }
+
+
+
+
         res.json({
 
             message:
@@ -504,7 +602,7 @@ const deleteGraduate = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -575,8 +673,9 @@ const importExcel = async(req,res)=>{
 
 
         const workbook =
-        XLSX.readFile(
-            req.file.path
+        XLSX.read(
+            req.file.buffer,
+            { type: "buffer" }
         );
 
 
@@ -829,7 +928,7 @@ const importExcel = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -853,10 +952,213 @@ const importExcel = async(req,res)=>{
 // GRADUATE OPTIONS
 // ==============================
 
+// ==============================
+// DOWNLOAD EXCEL TEMPLATE
+// ==============================
+
+const TEMPLATE_HEADERS = [
+
+    "nim",
+
+    "graduation_number",
+
+    "name",
+
+    "faculty",
+
+    "study_program"
+
+];
+
+
+const TEMPLATE_SAMPLE = [
+
+    "1234567890",
+
+    "0001",
+
+    "Contoh Nama Mahasiswa",
+
+    "Fakultas Ilmu Tarbiyah dan Keguruan",
+
+    "Pendidikan Agama Islam"
+
+];
+
+
+const TEMPLATE_COLS = [
+
+    { wch: 16 },
+
+    { wch: 20 },
+
+    { wch: 28 },
+
+    { wch: 40 },
+
+    { wch: 32 }
+
+];
+
+
+const downloadTemplate = (req,res)=>{
+
+
+    // Sheet pertama hanya berisi header supaya bisa langsung diisi
+    // lalu di-import tanpa perlu menghapus baris contoh.
+    const dataSheet = XLSX.utils.aoa_to_sheet(
+
+        [
+
+            TEMPLATE_HEADERS
+
+        ]
+
+    );
+
+
+    dataSheet["!cols"] = TEMPLATE_COLS;
+
+
+    const exampleSheet = XLSX.utils.aoa_to_sheet(
+
+        [
+
+            TEMPLATE_HEADERS,
+
+            TEMPLATE_SAMPLE
+
+        ]
+
+    );
+
+
+    exampleSheet["!cols"] = TEMPLATE_COLS;
+
+
+    const workbook = XLSX.utils.book_new();
+
+
+    XLSX.utils.book_append_sheet(
+
+        workbook,
+
+        dataSheet,
+
+        "Graduates"
+
+    );
+
+
+    XLSX.utils.book_append_sheet(
+
+        workbook,
+
+        exampleSheet,
+
+        "Contoh"
+
+    );
+
+
+    const buffer = XLSX.write(
+
+        workbook,
+
+        {
+
+            type: "buffer",
+
+            bookType: "xlsx"
+
+        }
+
+    );
+
+
+    res.setHeader(
+
+        "Content-Type",
+
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    );
+
+
+    res.setHeader(
+
+        "Content-Disposition",
+
+        'attachment; filename="template-graduates.xlsx"'
+
+    );
+
+
+    res.send(buffer);
+
+};
+
+
+
 const getGraduateOptions = async(req,res)=>{
 
 
+    const {
+        eventId
+    } = req.query;
+
+
+
     try{
+
+
+        // Tanpa filter event, perilaku lama dipertahankan (semua graduate).
+        // Dengan eventId, hanya graduate milik event itu yang dikembalikan.
+        if(eventId){
+
+
+            const result = await db.query(
+
+                `
+                SELECT
+
+                    id,
+
+                    nim,
+
+                    graduation_number,
+
+                    name,
+
+                    faculty,
+
+                    study_program
+
+
+                FROM graduates
+
+                WHERE event_id = $1
+
+                ORDER BY name ASC
+                `,
+
+                [
+                    eventId
+                ]
+
+            );
+
+
+
+            return res.json(
+                result.rows
+            );
+
+
+        }
+
+
+
 
 
         const result =
@@ -898,9 +1200,12 @@ const getGraduateOptions = async(req,res)=>{
     }catch(error){
 
 
+        console.error(error);
+
+
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -928,6 +1233,8 @@ module.exports = {
     deleteGraduate,
 
     importExcel,
+
+    downloadTemplate,
 
     getGraduateOptions
 

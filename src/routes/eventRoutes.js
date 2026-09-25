@@ -2,9 +2,8 @@ const express = require("express");
 const router = express.Router();
 
 
-const db = require("../config/database");
-
 const {
+    getEvents,
     getEventDetail
 } = require("../controllers/eventController");
 
@@ -14,32 +13,7 @@ const {
 
 // GET ALL EVENTS
 
-router.get("/", async(req,res)=>{
-
-    try{
-
-        const result = await db.query(
-            `
-            SELECT *
-            FROM events
-            ORDER BY id ASC
-            `
-        );
-
-
-        res.json(result.rows);
-
-
-    }catch(error){
-
-        res.status(500).json({
-            message:error.message
-        });
-
-    }
-
-
-});
+router.get("/", getEvents);
 
 
 

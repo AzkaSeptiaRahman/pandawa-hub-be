@@ -2,6 +2,10 @@ const db = require("../config/database");
 
 const { getPhotoUrl } = require("../config/s3");
 
+const {
+    signDownloadToken
+} = require("../middleware/downloadAuth");
+
 // =====================================================
 // GET SEARCH OPTIONS
 // =====================================================
@@ -71,7 +75,7 @@ const getPhotoOptions = async (req, res) => {
         );
 
         return res.status(500).json({
-            message: error.message
+            message:"Internal server error"
         });
     }
 };
@@ -215,6 +219,7 @@ const searchPhoto = async (req, res) => {
         return res.json({
             event: event.rows[0],
             student,
+            downloadToken: signDownloadToken(student.id),
             photos: groupedPhotos
         });
 
@@ -225,7 +230,7 @@ const searchPhoto = async (req, res) => {
         );
 
         return res.status(500).json({
-            message: error.message
+            message:"Internal server error"
         });
     }
 };

@@ -5,9 +5,6 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
-const fs = require("fs");
-const path = require("path");
-
 const eventRoutes = require("./routes/eventRoutes");
 const photoRoutes = require("./routes/photoRoutes");
 const downloadRoutes = require("./routes/downloadRoutes");
@@ -15,33 +12,21 @@ const authRoutes = require("./routes/authRoutes");
 const adminEventRoutes = require("./routes/adminEventRoutes");
 const adminGraduateRoutes = require("./routes/adminGraduateRoutes");
 const adminPhotoRoutes = require("./routes/adminPhotoRoutes");
+const adminUserRoutes = require("./routes/adminUserRoutes");
 
 const app = express();
 
+// Di belakang reverse proxy, IP asli pengirim ada di X-Forwarded-For.
+// Tanpa ini rate limit akan melihat IP proxy dan membatasi SEMUA
+// pengguna sebagai satu IP (atau bisa dilewati).
+if (process.env.TRUST_PROXY === "1") {
+
+    app.set("trust proxy", 1);
+
+}
+
+
 const PORT = process.env.PORT || 5000;
-
-// =====================================
-// CREATE UPLOAD FOLDER
-// =====================================
-
-const uploadPath = path.join(__dirname, "../uploads");
-
-if (!fs.existsSync(uploadPath)) {
-    fs.mkdirSync(uploadPath, {
-        recursive: true
-    });
-}
-
-const galleryPath = path.join(
-    uploadPath,
-    "events/gallery"
-);
-
-if (!fs.existsSync(galleryPath)) {
-    fs.mkdirSync(galleryPath, {
-        recursive: true
-    });
-}
 
 // =====================================
 // SECURITY
@@ -112,15 +97,6 @@ app.use((req, res, next) => {
 });
 
 // =====================================
-// STATIC UPLOAD
-// =====================================
-
-app.use(
-    "/uploads",
-    express.static(uploadPath)
-);
-
-// =====================================
 // PUBLIC ROUTES
 // =====================================
 
@@ -176,6 +152,15 @@ app.use(
 );
 
 // =====================================
+// ADMIN USERS
+// =====================================
+
+app.use(
+    "/api/admin/users",
+    adminUserRoutes
+);
+
+// =====================================
 // HEALTH CHECK
 // =====================================
 
@@ -192,14 +177,47 @@ app.get("/", (req, res) => {
 app.use((err, req, res, next) => {
     console.error(err);
 
+    // Error dari multer (validasi upload) -> 400, bukan 500
+    if (err && err.name === "MulterError") {
+        return res.status(400).json({
+            message:
+                err.code === "LIMIT_FILE_SIZE"
+                    ? "File is too large"
+                    : err.message
+        });
+    }
+
+    // Error dari fileFilter / upload lain yang menandai status-nya
+    if (err && Number.isInteger(err.status)) {
+        return res.status(err.status).json({
+            message: err.message
+        });
+    }
+
     res.status(500).json({
-        message: err.message
+        message: "Internal server error"
     });
 });
 
 // =====================================
 // START SERVER
 // =====================================
+
+// =====================================
+// CONFIG CHECK
+// =====================================
+
+if (!process.env.JWT_SECRET) {
+
+    console.error(
+
+        "FATAL: JWT_SECRET is not set. Add it to your environment."
+
+    );
+
+    process.exit(1);
+
+}
 
 app.listen(
     PORT,

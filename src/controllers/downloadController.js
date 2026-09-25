@@ -69,6 +69,12 @@ const downloadPhotos = async(req,res)=>{
             .name
             .replace(/\s+/g,"-");
 
+        const asciiName = studentName.replace(/[^\w.-]/g,"_") || "photos";
+
+        const encodedName = encodeURIComponent(
+            `${studentName}-photos.zip`
+        );
+
         res.setHeader(
 
             "Content-Type",
@@ -81,7 +87,7 @@ const downloadPhotos = async(req,res)=>{
 
             "Content-Disposition",
 
-            `attachment; filename=${studentName}-photos.zip`
+            `attachment; filename="${asciiName}-photos.zip"; filename*=UTF-8''${encodedName}`
 
         );
 
@@ -151,6 +157,15 @@ const downloadPhotos = async(req,res)=>{
                     photo.url
                 );
 
+                // Pakai ekstensi asli dari filename; fallback ke .jpg
+                const match = /\.(jpg|jpeg|png|webp)$/i.exec(
+                    photo.filename || ""
+                );
+
+                const extension = match
+                    ? match[0].toLowerCase()
+                    : ".jpg";
+
                 archive.append(
 
                     stream,
@@ -158,7 +173,7 @@ const downloadPhotos = async(req,res)=>{
                     {
 
                         name:
-                        `${photo.type}/${photo.id}.jpg`
+                        `${photo.type}/${photo.id}${extension}`
 
                     }
 
@@ -189,7 +204,7 @@ const downloadPhotos = async(req,res)=>{
 
             res.status(500).json({
 
-                message:error.message
+                message:"Internal server error"
 
             });
 

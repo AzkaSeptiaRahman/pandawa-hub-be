@@ -7,6 +7,13 @@ const jwt = require("jsonwebtoken");
 
 
 
+const {
+    validatePassword
+} = require("../utils/password");
+
+
+
+
 // REGISTER ADMIN
 
 const register = async(req,res)=>{
@@ -33,6 +40,21 @@ const register = async(req,res)=>{
 
         }
 
+
+
+
+        const passwordError = validatePassword(password);
+
+
+        if(passwordError){
+
+            return res.status(400).json({
+
+                message:passwordError
+
+            });
+
+        }
 
 
 
@@ -145,7 +167,7 @@ const register = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -337,7 +359,7 @@ const login = async(req,res)=>{
 
         res.status(500).json({
 
-            message:error.message
+            message:"Internal server error"
 
         });
 
@@ -353,10 +375,165 @@ const login = async(req,res)=>{
 
 
 
+// CHANGE PASSWORD
+
+const changePassword = async(req,res)=>{
+
+
+    try{
+
+
+        const {
+            currentPassword,
+            newPassword
+        } = req.body || {};
+
+
+
+        if(!currentPassword || !newPassword){
+
+            return res.status(400).json({
+
+                message:"Current and new password are required"
+
+            });
+
+        }
+
+
+
+        const passwordError = validatePassword(newPassword);
+
+
+        if(passwordError){
+
+            return res.status(400).json({
+
+                message:passwordError
+
+            });
+
+        }
+
+
+
+        const result = await db.query(
+
+            `
+            SELECT *
+            FROM admins
+            WHERE id=$1
+            `,
+
+            [
+                req.admin.id
+            ]
+
+        );
+
+
+
+        if(result.rows.length === 0){
+
+            return res.status(404).json({
+
+                message:"Admin not found"
+
+            });
+
+        }
+
+
+
+        const admin = result.rows[0];
+
+
+
+        const match = await bcrypt.compare(
+
+            currentPassword,
+
+            admin.password
+
+        );
+
+
+
+        if(!match){
+
+            return res.status(401).json({
+
+                message:"Current password is incorrect"
+
+            });
+
+        }
+
+
+
+        const hashedPassword = await bcrypt.hash(
+
+            newPassword,
+
+            10
+
+        );
+
+
+
+        await db.query(
+
+            `
+            UPDATE admins
+            SET password=$1
+            WHERE id=$2
+            `,
+
+            [
+                hashedPassword,
+                req.admin.id
+            ]
+
+        );
+
+
+
+        res.json({
+
+            message:"Password updated"
+
+        });
+
+
+
+    }catch(error){
+
+
+        console.error(error);
+
+
+        res.status(500).json({
+
+            message:"Internal server error"
+
+        });
+
+
+    }
+
+
+};
+
+
+
+
+
 module.exports = {
 
     register,
 
-    login
+    login,
+
+    changePassword
 
 };

@@ -1,9 +1,12 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
 
 const authMiddleware =
 require("../middleware/authMiddleware");
+
+const {
+    createArchiveUpload
+} = require("../config/upload");
 
 
 const {
@@ -12,8 +15,11 @@ const {
     updateGraduate,
     deleteGraduate,
     importExcel,
+
+    downloadTemplate,
     getGraduateOptions
 } = require("../controllers/adminGraduateController");
+
 
 
 
@@ -22,8 +28,9 @@ const {
 // MULTER EXCEL UPLOAD
 // ==============================
 
-const upload = multer({
-    dest:"uploads/excel"
+const upload = createArchiveUpload({
+    fileSize: 20 * 1024 * 1024,
+    files: 1
 });
 
 
@@ -100,6 +107,21 @@ router.delete(
     deleteGraduate
 );
 
+
+
+
+// ==============================
+// DOWNLOAD EXCEL TEMPLATE
+// GET /api/admin/graduates/template
+// ==============================
+
+router.get(
+
+    "/template",
+
+    downloadTemplate
+
+);
 
 
 

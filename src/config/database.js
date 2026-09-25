@@ -18,4 +18,19 @@ const pool = new Pool({
 });
 
 
+// Klien idle yang error (mis. koneksi diputus server) tidak boleh
+// menjatuhkan proses. Tanpa handler ini, pg melempar uncaught exception.
+pool.on(
+    "error",
+    (error)=>{
+
+        console.error(
+            "Unexpected database pool error:",
+            error.message
+        );
+
+    }
+);
+
+
 module.exports = pool;

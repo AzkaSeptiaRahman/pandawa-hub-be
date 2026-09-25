@@ -2,11 +2,13 @@ const express = require("express");
 
 const router = express.Router();
 
-const multer = require("multer");
-
 
 const authMiddleware =
 require("../middleware/authMiddleware");
+
+const {
+    createImageUpload
+} = require("../config/upload");
 
 
 
@@ -25,6 +27,8 @@ const {
     uploadGallery,
 
     addHighlight,
+
+    updateMedia,
 
     deleteMedia
 
@@ -46,23 +50,22 @@ const {
 
 // Event thumbnail
 
-const eventUpload = multer({
-
-    dest:"uploads/events"
-
-});
-
+const eventUpload =
+    createImageUpload({
+        fileSize: 10 * 1024 * 1024,
+        files: 1
+    });
 
 
 
 
 // Gallery multiple upload
 
-const galleryUpload = multer({
-
-    dest:"uploads/events/gallery"
-
-});
+const galleryUpload =
+    createImageUpload({
+        fileSize: 10 * 1024 * 1024,
+        files: 50
+    });
 
 
 
@@ -251,6 +254,21 @@ router.post(
 
 
 
+
+
+
+
+
+// UPDATE MEDIA TITLE
+
+
+router.put(
+
+    "/media/:id",
+
+    updateMedia
+
+);
 
 
 

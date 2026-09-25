@@ -7,10 +7,15 @@ const {
     downloadPhotos
 } = require("../controllers/downloadController");
 
+const {
+    downloadAuth
+} = require("../middleware/downloadAuth");
+
 
 
 router.get(
     "/:graduateId",
+    downloadAuth,
     downloadPhotos
 );
 

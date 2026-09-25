@@ -15,6 +15,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy source code
 COPY src ./src
 
+# Script operator (create-admin, reset-data) + schema
+COPY scripts ./scripts
+COPY db ./db
+
 # Jalankan sebagai non-root user
 RUN chown -R node:node /app
 USER node

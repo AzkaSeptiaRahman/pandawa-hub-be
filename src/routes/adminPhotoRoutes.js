@@ -2,30 +2,67 @@ const express = require("express");
 
 const router = express.Router();
 
-const multer = require("multer");
-
 
 const {
 
+    getPhotos,
+
     uploadPhoto,
 
-    bulkUpload
+    bulkUpload,
+
+    deletePhoto
 
 } = require("../controllers/adminPhotoController");
 
 
+const authMiddleware =
+require("../middleware/authMiddleware");
+
+const {
+    createImageUpload,
+    createArchiveUpload
+} = require("../config/upload");
 
 
 
-const upload =
-multer({
 
-    dest:"uploads/temp"
+// Single image: ditahan di memory lalu diupload ke object storage
+const imageUpload =
+    createImageUpload({
+        fileSize: 10 * 1024 * 1024,
+        files: 1
+    });
 
-});
+
+// ZIP arsip bulk upload
+const zipUpload =
+    createArchiveUpload({
+        fileSize: 200 * 1024 * 1024,
+        files: 1
+    });
 
 
 
+
+
+// AUTH
+
+router.use(authMiddleware);
+
+
+
+
+
+// LIST PHOTOS
+
+router.get(
+
+    "/",
+
+    getPhotos
+
+);
 
 
 
@@ -35,7 +72,7 @@ router.post(
 
     "/upload",
 
-    upload.single("file"),
+    imageUpload.single("file"),
 
     uploadPhoto
 
@@ -52,9 +89,22 @@ router.post(
 
     "/bulk-upload",
 
-    upload.single("file"),
+    zipUpload.single("file"),
 
     bulkUpload
+
+);
+
+
+
+
+// DELETE SINGLE PHOTO
+
+router.delete(
+
+    "/:id",
+
+    deletePhoto
 
 );
 
