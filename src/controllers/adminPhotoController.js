@@ -8,8 +8,17 @@ const {
 } = require("../config/s3");
 
 const {
-    extensionOf
+    extensionOf,
+    removeFileSafe
 } = require("../config/upload");
+
+const {
+    getBulkProgress,
+    startBulkProgress,
+    advanceBulkProgress,
+    finishBulkProgress,
+    failBulkProgress
+} = require("../config/bulkProgress");
 
 
 // =====================================================
@@ -222,7 +231,43 @@ const deletePhoto = async (req, res) => {
 // BULK PHOTO UPLOAD
 // =====================================================
 
+// Hanya satu bulk upload per admin pada satu waktu.
+// Mencegah dua ZIP besar diproses bersamaan (boros RAM/disk).
+const activeBulkUploads = new Map();
+
 const bulkUpload = async (req, res) => {
+
+    const adminKey =
+        req.admin && req.admin.id != null
+            ? String(req.admin.id)
+            : "unknown";
+
+    if (activeBulkUploads.has(adminKey)) {
+
+        // Request ditolak: file ZIP-nya sudah ditulis ke disk oleh
+        // multer, jadi harus dihapus agar tidak jadi sampah.
+        if (req.file && req.file.path) {
+
+            await removeFileSafe(req.file.path);
+
+        }
+
+        return res.status(409).json({
+
+            message:
+                "Another bulk upload is still running. Please wait until it finishes."
+
+        });
+
+    }
+
+    activeBulkUploads.set(adminKey, Date.now());
+
+    // ZIP ditulis ke disk sementara oleh multer.
+    const tempPath =
+        req.file && req.file.path
+            ? req.file.path
+            : null;
 
     try {
 
@@ -313,14 +358,29 @@ const bulkUpload = async (req, res) => {
         // -------------------------------------------------
 
         const zip =
-            await unzipper.Open.buffer(
-                req.file.buffer
+            await unzipper.Open.file(
+                req.file.path
             );
 
 
         const success = [];
         const failed = [];
         const skipped = [];
+
+        // Progress: jumlah entri ZIP yang akan diproses.
+        const totalEntries = zip.files.filter(
+            (entry) =>
+                entry.type === "File" &&
+                !entry.path.includes("__MACOSX") &&
+                !String(
+                    entry.path.split("/").pop()
+                )
+                    .split("\\")
+                    .pop()
+                    .startsWith(".")
+        ).length;
+
+        let processed = 0;
 
         let totalUncompressed = 0;
 
@@ -362,6 +422,12 @@ const bulkUpload = async (req, res) => {
             await client.query("BEGIN");
 
 
+            startBulkProgress(
+                adminKey,
+                totalEntries
+            );
+
+
         // -------------------------------------------------
         // PROCESS ZIP
         // -------------------------------------------------
@@ -400,6 +466,23 @@ const bulkUpload = async (req, res) => {
                 continue;
 
             }
+
+
+            // Progress: entri ini sedang diproses.
+            processed += 1;
+
+            advanceBulkProgress(
+                adminKey,
+                {
+                    total: totalEntries,
+                    processed,
+                    counters: {
+                        success,
+                        failed,
+                        skipped
+                    }
+                }
+            );
 
 
             totalUncompressed +=
@@ -719,10 +802,27 @@ const bulkUpload = async (req, res) => {
         await client.query("COMMIT");
 
 
+        finishBulkProgress(
+            adminKey,
+            {
+                total: totalEntries,
+                success_count: success.length,
+                failed_count: failed.length,
+                skipped_count: skipped.length
+            }
+        );
+
+
         } catch (transactionError) {
 
 
             await client.query("ROLLBACK");
+
+
+            failBulkProgress(
+                adminKey,
+                transactionError.message
+            );
 
 
             // Hapus objek S3 yang sudah terlanjur diunggah,
@@ -810,6 +910,12 @@ const bulkUpload = async (req, res) => {
         );
 
 
+        failBulkProgress(
+            adminKey,
+            error.message
+        );
+
+
         return res.status(error.status || 500).json({
 
             message:
@@ -819,7 +925,49 @@ const bulkUpload = async (req, res) => {
 
         });
 
+    } finally {
+
+        // File ZIP sementara selalu dihapus, baik sukses maupun gagal,
+        // supaya tidak menumpuk sampah di disk.
+        await removeFileSafe(tempPath);
+
+        activeBulkUploads.delete(adminKey);
+
     }
+
+};
+
+
+// =====================================================
+// BULK UPLOAD STATUS
+//
+// Dipakai frontend untuk memantau fase pemrosesan
+// setelah byte ZIP selesai terkirim.
+// =====================================================
+
+const getBulkUploadStatus = (req, res) => {
+
+    const adminKey =
+        req.admin && req.admin.id != null
+            ? String(req.admin.id)
+            : "unknown";
+
+    const job = getBulkProgress(adminKey);
+
+    if (!job) {
+
+        return res.json({
+            active: false,
+            phase: "idle",
+            percent: 0
+        });
+
+    }
+
+    return res.json({
+        active: !job.done,
+        ...job
+    });
 
 };
 
@@ -829,6 +977,7 @@ module.exports = {
     getPhotos,
     uploadPhoto,
     bulkUpload,
+    getBulkUploadStatus,
     deletePhoto
 
 };

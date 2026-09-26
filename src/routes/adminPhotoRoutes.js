@@ -11,6 +11,8 @@ const {
 
     bulkUpload,
 
+    getBulkUploadStatus,
+
     deletePhoto
 
 } = require("../controllers/adminPhotoController");
@@ -21,7 +23,7 @@ require("../middleware/authMiddleware");
 
 const {
     createImageUpload,
-    createArchiveUpload
+    createZipUpload
 } = require("../config/upload");
 
 
@@ -35,10 +37,11 @@ const imageUpload =
     });
 
 
-// ZIP arsip bulk upload
+// ZIP arsip bulk upload.
+// Ditulis ke disk sementara karena ukurannya bisa beberapa GB.
+// Batas ukuran maksimum diatur lewat BULK_MAX_UPLOAD.
 const zipUpload =
-    createArchiveUpload({
-        fileSize: 200 * 1024 * 1024,
+    createZipUpload({
         files: 1
     });
 
@@ -92,6 +95,20 @@ router.post(
     zipUpload.single("file"),
 
     bulkUpload
+
+);
+
+
+
+
+
+// BULK ZIP STATUS (polling progress)
+
+router.get(
+
+    "/bulk-upload/status",
+
+    getBulkUploadStatus
 
 );
 

@@ -14,6 +14,10 @@ const adminGraduateRoutes = require("./routes/adminGraduateRoutes");
 const adminPhotoRoutes = require("./routes/adminPhotoRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
 
+const {
+    cleanupStaleZipTemps
+} = require("./config/upload");
+
 const app = express();
 
 // Di belakang reverse proxy, IP asli pengirim ada di X-Forwarded-For.
@@ -66,7 +70,14 @@ app.use(
 app.use(
     rateLimit({
         windowMs: 15 * 60 * 1000,
-        max: 100
+        max: 100,
+
+        // Progress bulk upload di-polling tiap beberapa detik selama
+        // proses berjalan, jadi endpoint statusnya harus dikecualikan
+        // agar tidak menghabiskan jatah limit global.
+        skip: (req) =>
+            req.originalUrl.split("?")[0] ===
+            "/api/admin/photos/bulk-upload/status"
     })
 );
 
@@ -219,7 +230,7 @@ if (!process.env.JWT_SECRET) {
 
 }
 
-app.listen(
+const server = app.listen(
     PORT,
     () => {
         console.log(
@@ -227,3 +238,20 @@ app.listen(
         );
     }
 );
+
+// Bulk upload ZIP bisa berukuran besar dan berjalan lama.
+// Timeout default (5 menit) akan memutus upload yang belum selesai,
+// jadi diperpanjang. Nilai 0 = tanpa batas selama transfer berjalan.
+server.requestTimeout = 0;
+server.headersTimeout = 120000;
+server.timeout = 0;
+
+// Bersihkan sisa file ZIP sementara dari proses sebelumnya
+// (mis. server sempat mati di tengah upload) agar disk tidak penuh.
+cleanupStaleZipTemps().then((removed) => {
+    if (removed > 0) {
+        console.log(
+            `Removed ${removed} stale bulk ZIP temp file(s).`
+        );
+    }
+});
