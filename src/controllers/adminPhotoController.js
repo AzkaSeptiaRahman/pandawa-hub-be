@@ -387,7 +387,7 @@ const bulkUpload = async (req, res) => {
         const MAX_UNCOMPRESSED =
             parseInt(
                 process.env.BULK_MAX_UNCOMPRESSED ||
-                String(500 * 1024 * 1024),
+                String(6 * 1024 * 1024 * 1024),
                 10
             );
 
