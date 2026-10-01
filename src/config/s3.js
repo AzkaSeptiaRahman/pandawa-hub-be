@@ -33,6 +33,30 @@ const s3Client = new S3Client({
         secretAccessKey:
         process.env.S3_SECRET_ACCESS_KEY
 
+    },
+
+    // Batas waktu request ke object storage supaya koneksi yang
+    // macet/lambat tidak menggantung tanpa batas (penyebab "stuck").
+    // throwOnRequestTimeout=true membuat request di-abort & error,
+    // bukan hanya warning.
+
+    requestHandler: {
+
+        connectionTimeout:
+        parseInt(
+            process.env.S3_CONNECTION_TIMEOUT || "10000",
+            10
+        ),
+
+        requestTimeout:
+        parseInt(
+            process.env.S3_REQUEST_TIMEOUT || "30000",
+            10
+        ),
+
+        throwOnRequestTimeout:
+        true
+
     }
 
 });

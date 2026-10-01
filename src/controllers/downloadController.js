@@ -6,13 +6,85 @@ const {
     getObjectStream
 } = require("../config/s3");
 
+const FILENAME_REGEX = /\.(jpg|jpeg|png|webp)$/i;
+
+const DOWNLOAD_CONCURRENCY = Math.max(
+    1,
+    parseInt(process.env.DOWNLOAD_CONCURRENCY || "4", 10) || 4
+);
+
+// Baca seluruh isi stream menjadi buffer
+
+const readStream = (stream)=>new Promise((resolve, reject)=>{
+
+    const chunks = [];
+
+    stream.on(
+        "data",
+        (chunk)=>chunks.push(chunk)
+    );
+
+    stream.on(
+        "end",
+        ()=>resolve(Buffer.concat(chunks))
+    );
+
+    stream.on("error", reject);
+
+});
+
+// Jalankan task dengan batas paralel supaya tidak membanjiri
+// object storage ketika jumlah foto banyak
+
+const mapWithConcurrency = async(items, limit, task)=>{
+
+    const results = new Array(items.length);
+
+    let next = 0;
+
+    const workers = new Array(
+        Math.min(limit, items.length)
+    ).fill(null).map(async()=>{
+
+        while(next < items.length){
+
+            const index = next++;
+
+            results[index] = await task(
+                items[index],
+                index
+            );
+
+        }
+
+    });
+
+    await Promise.all(workers);
+
+    return results;
+
+};
+
+// Ukuran pasti ZIP mode "store": 30 byte local header + nama + data,
+// 46 byte central directory + nama, 22 byte end-of-central-directory.
+// Ukuran sudah diketahui saat streaming sehingga tidak ada data
+// descriptor tambahan.
+
+const zipSize = (files)=>files.reduce(
+
+    (total, file)=>total + 76 +
+        (2 * Buffer.byteLength(file.name)) +
+        file.buffer.length,
+
+    22
+
+);
+
 const downloadPhotos = async(req,res)=>{
 
     const { graduateId } = req.params;
 
     try {
-
-        // Ambil data mahasiswa
 
         const graduate = await db.query(
 
@@ -22,9 +94,7 @@ const downloadPhotos = async(req,res)=>{
             WHERE id = $1
             `,
 
-            [
-                graduateId
-            ]
+            [ graduateId ]
 
         );
 
@@ -38,8 +108,6 @@ const downloadPhotos = async(req,res)=>{
 
         }
 
-        // Ambil foto
-
         const photos = await db.query(
 
             `
@@ -49,9 +117,7 @@ const downloadPhotos = async(req,res)=>{
             ORDER BY type ASC
             `,
 
-            [
-                graduateId
-            ]
+            [ graduateId ]
 
         );
 
@@ -60,6 +126,78 @@ const downloadPhotos = async(req,res)=>{
             return res.status(404).json({
 
                 message:"Photos not found"
+
+            });
+
+        }
+
+        const items = photos.rows.map((photo)=>{
+
+            const match = FILENAME_REGEX.exec(
+                photo.filename || ""
+            );
+
+            return {
+
+                key: photo.url,
+
+                name: `${photo.type}/${photo.id}${
+                    match ? match[0].toLowerCase() : ".jpg"
+                }`
+
+            };
+
+        });
+
+        // Ambil semua objek dari object storage secara paralel
+        // (dengan batas). Ini bagian paling lama dari proses,
+        // jadi berurutan membuat total waktu menumpuk.
+
+        const buffers = await mapWithConcurrency(
+
+            items,
+            DOWNLOAD_CONCURRENCY,
+
+            async(item)=>{
+
+                try {
+
+                    return await readStream(
+                        await getObjectStream(item.key)
+                    );
+
+                }catch(error){
+
+                    console.error(
+                        `Skip photo (key: ${item.key}):`,
+                        error.message
+                    );
+
+                    return null;
+
+                }
+
+            }
+
+        );
+
+        const files = buffers
+
+            .map((buffer, index)=>({
+
+                buffer,
+
+                name: items[index].name
+
+            }))
+
+            .filter((file)=>file.buffer !== null);
+
+        if(files.length === 0){
+
+            return res.status(502).json({
+
+                message:"Failed to fetch photos from storage"
 
             });
 
@@ -91,13 +229,28 @@ const downloadPhotos = async(req,res)=>{
 
         );
 
+        // ZIP mode "store": JPG sudah terkompresi, jadi kompresi ulang
+        // hanya membuang CPU tanpa memperkecil ukuran. Ukuran hasilnya
+        // pun deterministik sehingga Content-Length bisa dihitung pasti
+        // (browser dapat progress bar, proxy tidak buffering buta).
+
+        const totalSize = zipSize(files);
+
+        if(totalSize < 0xffffffff){
+
+            res.setHeader(
+                "Content-Length",
+                String(totalSize)
+            );
+
+        }
+
         const archive = archiver(
 
             "zip",
+
             {
-                zlib:{
-                    level:9
-                }
+                store:true
             }
 
         );
@@ -146,47 +299,17 @@ const downloadPhotos = async(req,res)=>{
 
         archive.pipe(res);
 
-        // Stream tiap file dari object storage langsung ke dalam ZIP
-        // (tanpa menulis ke disk)
+        for(const file of files){
 
-        for(const photo of photos.rows){
+            archive.append(
 
-            try {
+                file.buffer,
 
-                const stream = await getObjectStream(
-                    photo.url
-                );
+                {
+                    name: file.name
+                }
 
-                // Pakai ekstensi asli dari filename; fallback ke .jpg
-                const match = /\.(jpg|jpeg|png|webp)$/i.exec(
-                    photo.filename || ""
-                );
-
-                const extension = match
-                    ? match[0].toLowerCase()
-                    : ".jpg";
-
-                archive.append(
-
-                    stream,
-
-                    {
-
-                        name:
-                        `${photo.type}/${photo.id}${extension}`
-
-                    }
-
-                );
-
-            }catch(err){
-
-                console.error(
-                    `Skip photo ${photo.id} (key: ${photo.url}):`,
-                    err.message
-                );
-
-            }
+            );
 
         }
 
