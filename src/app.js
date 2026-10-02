@@ -75,9 +75,14 @@ app.use(
         // Progress bulk upload di-polling tiap beberapa detik selama
         // proses berjalan, jadi endpoint statusnya harus dikecualikan
         // agar tidak menghabiskan jatah limit global.
-        skip: (req) =>
-            req.originalUrl.split("?")[0] ===
-            "/api/admin/photos/bulk-upload/status"
+        skip: (req) => {
+
+            const path = req.originalUrl.split("?")[0];
+
+            return path === "/api/admin/photos/bulk-upload/status" ||
+                path === "/api/admin/photos/purge/status";
+
+        }
     })
 );
 

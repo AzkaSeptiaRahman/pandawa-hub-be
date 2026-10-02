@@ -18,6 +18,21 @@ const {
 } = require("../controllers/adminPhotoController");
 
 
+const {
+
+    getPurgeOptions,
+
+    previewPurge,
+
+    downloadPurgeBackup,
+
+    purgePhotos,
+
+    getPurgeStatus
+
+} = require("../controllers/adminPhotoPurgeController");
+
+
 const authMiddleware =
 require("../middleware/authMiddleware");
 
@@ -122,6 +137,72 @@ router.delete(
     "/:id",
 
     deletePhoto
+
+);
+
+
+
+
+
+// =====================================
+// PURGE PHOTOS BY SCOPE (event / faculty / study program)
+//
+// Hanya menghapus foto (baris photos + objek storage).
+// Baris graduates TIDAK dihapus.
+// =====================================
+
+
+// DROPDOWN FAKULTAS & PRODI PER EVENT
+
+router.get(
+
+    "/purge/options",
+
+    getPurgeOptions
+
+);
+
+
+// PREVIEW JUMLAH FOTO & UKURAN (tanpa menghapus)
+
+router.post(
+
+    "/purge/preview",
+
+    previewPurge
+
+);
+
+
+// DOWNLOAD BACKUP DATA LINGKUP
+
+router.get(
+
+    "/purge/backup",
+
+    downloadPurgeBackup
+
+);
+
+
+// MULAI PURGE (background job)
+
+router.post(
+
+    "/purge",
+
+    purgePhotos
+
+);
+
+
+// STATUS PROGRESS PURGE (polling)
+
+router.get(
+
+    "/purge/status",
+
+    getPurgeStatus
 
 );
 
